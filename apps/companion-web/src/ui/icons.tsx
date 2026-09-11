@@ -102,3 +102,48 @@ export function ChainLogo({
     />
   );
 }
+
+/** Kebab: the top-right menu every phone screen has. */
+export function MoreIcon({ size = 22, className }: { size?: number; className?: string }): ReactNode {
+  return (
+    <Svg size={size} className={className}>
+      <circle cx="12" cy="5" r="1.85" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.85" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="19" r="1.85" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+export function PlusIcon({ size = 22, className }: { size?: number; className?: string }): ReactNode {
+  return (
+    <Svg size={size} className={className}>
+      <path d="M12 5.5v13M5.5 12h13" />
+    </Svg>
+  );
+}
+
+export function PencilIcon({ size = 18, className }: { size?: number; className?: string }): ReactNode {
+  return (
+    <Svg size={size} className={className}>
+      <path d="M4.5 19.5 5 16l9.5-9.5 3 3L8 19z" />
+      <path d="M15.5 5.5 17 4a1.6 1.6 0 0 1 2.5 2.5L18 8" />
+    </Svg>
+  );
+}
+
+export function TrashIcon({ size = 18, className }: { size?: number; className?: string }): ReactNode {
+  return (
+    <Svg size={size} className={className}>
+      <path d="M5 7h14M9.5 7V5h5v2M7 7l.8 12h8.4L17 7" />
+    </Svg>
+  );
+}
+
+export function LockIcon({ size = 20, className }: { size?: number; className?: string }): ReactNode {
+  return (
+    <Svg size={size} className={className}>
+      <rect x="4.5" y="10.5" width="15" height="10" rx="2.6" />
+      <path d="M8.2 10.5V7.9a3.8 3.8 0 0 1 7.6 0v2.6" />
+    </Svg>
+  );
+}

@@ -16,6 +16,9 @@ import {
 import { useCompanion } from '../App';
 import { Alert, Badge, Button, CopyButton, Header, KeyValue, Toast, useToast } from '../ui/kit';
 import { ChainLogo, CheckIcon } from '../ui/icons';
+import { PasswordField } from '../ui/kit';
+import { createPasscodeRecord, verifyPasscode } from '../lib/lock';
+import { loadPasscode } from '../lib/store';
 import { TextArea, TextField } from '@netproof/ui/text-field';
 import { useVisibleAccounts } from './Wallet';
 
@@ -67,17 +70,10 @@ export function SettingsScreen(): ReactNode {
           <div className="np-label">钱包</div>
           <KeyValue label="当前" value={wallet.name} />
           <KeyValue label="指纹" value={wallet.masterFingerprint} mono />
-          <div className="np-grid-2" style={{ marginTop: 10 }}>
-            <Button variant="secondary" onClick={() => navigate({ name: 'wallets' })}>
-              切换钱包
-            </Button>
-            <Button variant="secondary" onClick={() => navigate({ name: 'wallets' })}>
-              管理
-            </Button>
-          </div>
           <Button variant="ghost" size="small" onClick={() => navigate({ name: 'advanced' })}>
             账户与派生设置
           </Button>
+          <PasscodeSection />
         </div>
       ) : null}
 
@@ -617,3 +613,79 @@ function toWei(amount: string): bigint {
 }
 
 export { DEFAULT_SETTINGS };
+
+/**
+ * Passcode management.
+ *
+ * The wording matters more than the widget. This lock hides the wallet from someone who
+ * picks up an unlocked machine; it does not encrypt anything, and every address this app
+ * watches is still readable in this browser's storage. A settings row that said "安全"
+ * without saying that would be a false claim about what the user just turned on.
+ */
+function PasscodeSection(): ReactNode {
+  const { hasPasscode, setPasscode, lock } = useCompanion();
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const { toast, show } = useToast();
+
+  const save = (): void => {
+    setError(null);
+    if (hasPasscode && !verifyPasscode(current, loadPasscode()!)) {
+      setError('当前密码不正确');
+      return;
+    }
+    if (next.length < 6) {
+      setError('新密码至少 6 位');
+      return;
+    }
+    if (next !== confirm) {
+      setError('两次输入不一致');
+      return;
+    }
+    setPasscode(createPasscodeRecord(next));
+    setCurrent('');
+    setNext('');
+    setConfirm('');
+    show('密码已更新');
+  };
+
+  return (
+    <div className="np-card">
+      <div className="np-label">锁屏密码</div>
+      <div className="np-body np-body--tight" style={{ marginTop: 6 }}>
+        锁屏只遮挡界面，不加密数据——本机存的地址仍可被能读取本机存储的人看到。
+      </div>
+      <div className="np-stack" style={{ marginTop: 12 }}>
+        {hasPasscode ? (
+          <PasswordField value={current} onChange={setCurrent} placeholder="当前密码" />
+        ) : null}
+        <PasswordField value={next} onChange={setNext} placeholder="新密码（至少 6 位）" />
+        <PasswordField value={confirm} onChange={setConfirm} placeholder="再输一次" />
+        {error ? <Alert tone="danger">{error}</Alert> : null}
+        <div className="np-grid-2">
+          <Button variant="secondary" onClick={save}>
+            {hasPasscode ? '修改密码' : '设置密码'}
+          </Button>
+          {hasPasscode ? (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setPasscode(null);
+                show('已取消密码');
+              }}
+            >
+              取消密码
+            </Button>
+          ) : (
+            <Button variant="ghost" onClick={lock}>
+              立即锁定
+            </Button>
+          )}
+        </div>
+      </div>
+      <Toast message={toast} />
+    </div>
+  );
+}

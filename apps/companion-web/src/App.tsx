@@ -2,15 +2,11 @@ import type { ReactNode } from 'react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   DEFAULT_SETTINGS,
-  allAddresses,
   chainLabel,
   fetchBalance,
-  isSolanaChain,
-  listAccounts,
   type CompanionSettings,
   type ConnectedWallet,
   type PendingRequest,
-  type ResolvedAccount,
 } from '@netproof/companion';
 import {
   activeWallet,
@@ -18,8 +14,12 @@ import {
   clearWallets,
   loadActivity,
   loadApprovedOrigins,
+  loadLocked,
+  loadPasscode,
   loadSettings,
   loadWalletState,
+  saveLocked,
+  savePasscode,
   putPending,
   recordActivity,
   removeWallet,
@@ -31,9 +31,10 @@ import {
   type WalletRecord,
   type WalletState,
 } from './lib/store';
-import { Alert, Badge, Button, Spinner, Toast, shortAddress, useToast } from './ui/kit';
+import { verifyPasscode, type PasscodeRecord } from './lib/lock';
+import { Alert, Badge, Button, Spinner, Toast, useToast } from './ui/kit';
 import { BrandMark } from './ui/brand';
-import { ChainLogo, CheckIcon } from './ui/icons';
+import { ChainLogo, GearIcon, LockIcon, MoreIcon } from './ui/icons';
 import { ConnectScreen } from './screens/Connect';
 import { StartScreen } from './screens/Start';
 import { SignScreen } from './screens/Sign';
@@ -46,7 +47,8 @@ import {
   useVisibleAccounts,
 } from './screens/Wallet';
 import { SendScreen } from './screens/Send';
-import { ManageScreen } from './screens/Manage';
+import { LockScreen } from './screens/Lock';
+import { Switcher, accountsOf } from './screens/Switcher';
 import { AdvancedScreen, DeveloperScreen, SettingsScreen } from './screens/Settings';
 
 /**
@@ -65,7 +67,6 @@ import { AdvancedScreen, DeveloperScreen, SettingsScreen } from './screens/Setti
 export type Route =
   | { name: 'home' }
   | { name: 'connect' }
-  | { name: 'wallets' }
   /** One asset, and the screen where its send and receive buttons live. */
   | { name: 'asset'; asset: string; symbol: string; label: string }
   | { name: 'send'; token?: string }
@@ -91,6 +92,12 @@ interface CompanionValue {
   pair: (wallet: ConnectedWallet, preferredChainId?: number) => void;
   /** Switch wallets. The account selection follows the wallet, not the app. */
   activateWallet: (id: string) => void;
+  /** Lock the view. Honest scope: see `screens/Lock.tsx`. */
+  locked: boolean;
+  hasPasscode: boolean;
+  lock: () => void;
+  unlock: (passcode: string) => boolean;
+  setPasscode: (record: PasscodeRecord | null) => void;
   renameWallet: (id: string, name: string) => void;
   forgetWallet: (id: string) => void;
   unpair: () => void;
@@ -113,7 +120,6 @@ export function useCompanion(): CompanionValue {
 function parseRoute(hash: string): Route {
   const path = hash.replace(/^#/u, '');
   if (path.startsWith('/connect')) return { name: 'connect' };
-  if (path.startsWith('/wallets')) return { name: 'wallets' };
   if (path.startsWith('/asset/')) {
     const [asset = 'native', symbol = '', label = ''] = path.slice('/asset/'.length).split('|');
     return { name: 'asset', asset, symbol, label };
@@ -122,8 +128,6 @@ function parseRoute(hash: string): Route {
   if (path.startsWith('/send/')) return { name: 'send', token: path.slice('/send/'.length) };
   if (path.startsWith('/send')) return { name: 'send' };
   if (path.startsWith('/receive')) return { name: 'receive' };
-  // Accounts and wallets are managed in one place; the old hash still lands there.
-  if (path.startsWith('/accounts')) return { name: 'wallets' };
   if (path.startsWith('/add-token')) return { name: 'add-token' };
   if (path.startsWith('/sign/')) return { name: 'sign', id: path.slice('/sign/'.length) };
   if (path.startsWith('/settings')) return { name: 'settings' };
@@ -158,11 +162,15 @@ function CompanionProvider({ children }: { children: ReactNode }): ReactNode {
   const [approvedOrigins, setApprovedOrigins] = useState<string[]>([]);
   const [activity, setActivity] = useState<ActivityRecord[]>([]);
   const [route, setRoute] = useState<Route>({ name: 'home' });
+  const [locked, setLocked] = useState(false);
+  const [passcode, setPasscodeRecord] = useState<PasscodeRecord | null>(null);
   const [ready, setReady] = useState(false);
   const { toast, show } = useToast();
 
   const refresh = useCallback(() => {
     setState(loadWalletState());
+    setLocked(loadLocked());
+    setPasscodeRecord(loadPasscode());
     setGlobalSettings(loadSettings());
     setApprovedOrigins(loadApprovedOrigins());
     setActivity(loadActivity());
@@ -253,6 +261,28 @@ function CompanionProvider({ children }: { children: ReactNode }): ReactNode {
     refresh();
   }, [refresh]);
 
+  const lock = useCallback(() => {
+    saveLocked(true);
+    setLocked(true);
+    // Drop straight back to the wallet list, so unlocking never lands on whatever half-read
+    // screen happened to be open when the user walked away.
+    navigate({ name: 'home' });
+  }, [navigate]);
+
+  const unlock = useCallback((candidate: string): boolean => {
+    const record = loadPasscode();
+    if (record && !verifyPasscode(candidate, record)) return false;
+    saveLocked(false);
+    setLocked(false);
+    return true;
+  }, []);
+
+  const setPasscode = useCallback((record: PasscodeRecord | null) => {
+    savePasscode(record);
+    setPasscodeRecord(record);
+    if (!record) saveLocked(false);
+  }, []);
+
   const addOrigin = useCallback(
     (origin: string) => {
       const origins = loadApprovedOrigins();
@@ -310,6 +340,11 @@ function CompanionProvider({ children }: { children: ReactNode }): ReactNode {
       updateSettings,
       pair,
       activateWallet,
+      locked,
+      hasPasscode: passcode !== null,
+      lock,
+      unlock,
+      setPasscode,
       renameWallet,
       forgetWallet,
       unpair,
@@ -331,6 +366,11 @@ function CompanionProvider({ children }: { children: ReactNode }): ReactNode {
       refresh,
       updateSettings,
       pair,
+      locked,
+      passcode,
+      lock,
+      unlock,
+      setPasscode,
       unpair,
       addOrigin,
       dropOrigin,
@@ -366,7 +406,21 @@ export function App(): ReactNode {
 }
 
 function Shell(): ReactNode {
-  const { route, wallet } = useCompanion();
+  const { route, wallet, locked, hasPasscode, unlock, setPasscode } = useCompanion();
+
+  // The lock covers everything, including the empty state: a locked app that still shows
+  // "no wallet paired" has told the observer something.
+  if (locked) {
+    return (
+      <div className="np-app">
+        <LockScreen
+          hasPasscode={hasPasscode}
+          onUnlock={unlock}
+          setPasscode={(record) => setPasscode(record)}
+        />
+      </div>
+    );
+  }
 
   // With nothing paired there is no wallet to lay out around, so the empty state is
   // the whole app. Settings remains reachable because the RPC endpoint may need
@@ -384,7 +438,6 @@ function Shell(): ReactNode {
       {wallet ? <TopBar /> : null}
       {route.name === 'home' ? <HomeScreen /> : null}
       {route.name === 'connect' ? <ConnectScreen /> : null}
-      {route.name === 'wallets' ? <ManageScreen /> : null}
       {route.name === 'asset' ? (
         <AssetScreen asset={route.asset} symbol={route.symbol} label={route.label} />
       ) : null}
@@ -409,9 +462,9 @@ function Shell(): ReactNode {
  * paired, and the user asked which of their two wallets they were looking at.
  */
 function TopBar(): ReactNode {
-  const { settings, updateSettings, navigate, wallet, wallets, activateWallet, show } = useCompanion();
+  const { settings, updateSettings, navigate, wallet, wallets, lock } = useCompanion();
   const [openMenu, setOpenMenu] = useState<'network' | 'account' | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(wallet?.id ?? null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const { accounts } = useVisibleAccounts();
   const current = accounts[settings.addressIndex] ?? accounts[0];
@@ -445,10 +498,7 @@ function TopBar(): ReactNode {
         <button
           type="button"
           className="np-chip"
-          onClick={() => {
-            setExpanded(wallet?.id ?? null);
-            setOpenMenu(openMenu === 'account' ? null : 'account');
-          }}
+          onClick={() => setOpenMenu(openMenu === 'account' ? null : 'account')}
           disabled={!wallet}
           aria-label="切换钱包或账户"
         >
@@ -458,6 +508,50 @@ function TopBar(): ReactNode {
           </span>
           <span style={{ opacity: 0.5 }}>▾</span>
         </button>
+
+        {/* Same kebab, same corner, same two entries as the device's own menu. */}
+        <div className="np-menu">
+          <button
+            type="button"
+            className="np-icon-btn np-icon-btn--plain"
+            onClick={() => setMenuOpen((previous) => !previous)}
+            aria-label="更多"
+            aria-expanded={menuOpen}
+          >
+            <MoreIcon size={22} />
+          </button>
+          {menuOpen ? (
+            <>
+              <div className="np-menu__scrim" onClick={() => setMenuOpen(false)} />
+              <div className="np-menu__panel" role="menu">
+                <button
+                  type="button"
+                  className="np-menu__item"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    lock();
+                  }}
+                >
+                  <LockIcon size={18} />
+                  <span className="np-grow">锁定</span>
+                </button>
+                <button
+                  type="button"
+                  className="np-menu__item"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    navigate({ name: 'settings' });
+                  }}
+                >
+                  <GearIcon size={18} />
+                  <span className="np-grow">设置</span>
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
       </header>
 
       {openMenu ? (
@@ -494,152 +588,13 @@ function TopBar(): ReactNode {
                 </Button>
               </>
             ) : (
-              <>
-                {/*
-                  Wallets are groups; accounts are what you pick. Collapsed by default
-                  except for the wallet you are in, so the list stays short with several
-                  wallets paired.
-                */}
-                {wallets.map((entry) => {
-                  const open = expanded === entry.id;
-                  const itsAccounts = accountsOf(entry, settings);
-                  const active = entry.id === wallet?.id;
-                  return (
-                    <div key={entry.id}>
-                      <button
-                        type="button"
-                        className="np-list__item"
-                        style={{ borderRadius: 12 }}
-                        onClick={() => setExpanded(open ? null : entry.id)}
-                        aria-expanded={open}
-                      >
-                        <span className="np-grow">{entry.name}</span>
-                        {active ? <Badge tone="accent">使用中</Badge> : null}
-                        <span style={{ opacity: 0.5 }}>{open ? '⌃' : '⌄'}</span>
-                      </button>
-
-                      {open
-                        ? itsAccounts.map((account, index) => (
-                            <button
-                              key={account.path}
-                              type="button"
-                              className="np-list__item"
-                              style={{ borderRadius: 12, paddingLeft: 18 }}
-                              onClick={() => {
-                                if (!active) activateWallet(entry.id);
-                                updateSettings({ addressIndex: index });
-                                setOpenMenu(null);
-                              }}
-                            >
-                              <span
-                                style={{
-                                  width: 26,
-                                  height: 26,
-                                  borderRadius: 999,
-                                  background: 'var(--np-bg-sunken)',
-                                  display: 'grid',
-                                  placeItems: 'center',
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                }}
-                              >
-                                {index + 1}
-                              </span>
-                              <span className="np-grow" style={{ minWidth: 0 }}>
-                                <span className="np-subtitle" style={{ display: 'block' }}>
-                                  {account.name}
-                                </span>
-                                <span className="np-mono np-ink-3" style={{ fontSize: 12 }}>
-                                  {shortAddress(account.address, 6, 4)}
-                                </span>
-                              </span>
-                              <span className="np-num np-ink-3">{balances[account.address.toLowerCase()] ?? ''}</span>
-                              {active && index === settings.addressIndex ? <CheckIcon size={18} /> : null}
-                            </button>
-                          ))
-                        : null}
-
-                      {open ? (
-                        <button
-                          type="button"
-                          className="np-list__item"
-                          style={{ borderRadius: 12, paddingLeft: 18 }}
-                          onClick={() => {
-                            if (!active) activateWallet(entry.id);
-                            if (itsAccounts.length >= maxAccounts(entry, settings)) {
-                              show('没有更多可显示地址了，请到「设置 → 账户」提高派生数量');
-                              return;
-                            }
-                            setStateVisibleAccounts(entry, itsAccounts.length + 1, active, updateSettings);
-                            setOpenMenu(null);
-                          }}
-                        >
-                          <span className="np-grow">+ 添加账户</span>
-                        </button>
-                      ) : null}
-                    </div>
-                  );
-                })}
-
-                <div className="np-grid-2" style={{ marginTop: 10 }}>
-                  <Button variant="secondary" onClick={() => { setOpenMenu(null); navigate({ name: 'wallets' }); }}>
-                    管理
-                  </Button>
-                  <Button variant="ghost" onClick={() => { setOpenMenu(null); navigate({ name: 'connect' }); }}>
-                    添加钱包
-                  </Button>
-                </div>
-              </>
+              <Switcher onClose={() => setOpenMenu(null)} balances={balances} />
             )}
           </div>
         </div>
       ) : null}
     </>
   );
-}
-
-/** How many accounts a wallet can reveal: what the device exported, times the depth. */
-function maxAccounts(entry: WalletRecord, settings: CompanionSettings): number {
-  if (isSolanaChain(settings.chainId)) return entry.addresses?.length ?? 0;
-  return (
-    listAccounts(entry, settings.schemeId).length * Math.max(1, settings.addressCount)
-  );
-}
-
-/** The accounts a wallet would show, honouring that wallet's own visible count. */
-function accountsOf(entry: WalletRecord, settings: CompanionSettings): NamedAccount[] {
-  const scoped: CompanionSettings = {
-    ...settings,
-    addressIndex: entry.addressIndex,
-    visibleAccounts: entry.visibleAccounts,
-  };
-  return allAddresses(entry, scoped)
-    .slice(0, Math.max(1, entry.visibleAccounts))
-    .map((account, index) => ({
-      ...account,
-      ordinal: index + 1,
-      name: settings.accountNames[account.address.toLowerCase()] ?? `账户 ${index + 1}`,
-    }));
-}
-
-interface NamedAccount extends ResolvedAccount {
-  ordinal: number;
-  name: string;
-}
-
-function setStateVisibleAccounts(
-  entry: WalletRecord,
-  next: number,
-  isActive: boolean,
-  updateSettings: (patch: Partial<CompanionSettings>) => void,
-): void {
-  if (isActive) {
-    updateSettings({ visibleAccounts: next });
-    return;
-  }
-  // A wallet that is not active cannot go through `updateSettings`, which writes to the
-  // active wallet; the next switch picks the count up from its own record.
-  updateWallet(entry.id, { visibleAccounts: next });
 }
 
 /**

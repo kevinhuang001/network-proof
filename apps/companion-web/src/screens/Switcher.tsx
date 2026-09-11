@@ -1,0 +1,296 @@
+import type { ReactNode } from 'react';
+import { useState } from 'react';
+import {
+  allAddresses,
+  chainMeta,
+  isSolanaChain,
+  listAccounts,
+  type CompanionSettings,
+  type ResolvedAccount,
+} from '@netproof/companion';
+import { TextField } from '@netproof/ui/text-field';
+import { useCompanion } from '../App';
+import { Button, shortAddress } from '../ui/kit';
+import { CheckIcon, PencilIcon, PlusIcon, TrashIcon } from '../ui/icons';
+import { updateWallet, type WalletRecord } from '../lib/store';
+
+/**
+ * The switcher, and the only place wallets and accounts are managed.
+ *
+ * There used to be a separate 管理 screen behind a 管理 button, and the switcher was a
+ * read-only list. That split meant two screens showed the same two levels, and the one you
+ * were looking at was never the one that could act: you had to leave the list to rename
+ * something you could see in it, then come back. Switching and managing are the same
+ * intent, so they are the same screen.
+ *
+ * Shape, following the reference wallet: wallets are collapsible groups, accounts are what
+ * you pick, the current one is checked, and "+ 添加账户" sits at the same level as the
+ * accounts it adds to.
+ */
+export interface NamedAccount extends ResolvedAccount {
+  ordinal: number;
+  name: string;
+}
+
+/** The accounts a wallet shows, honouring that wallet's own visible count. */
+export function accountsOf(entry: WalletRecord, settings: CompanionSettings): NamedAccount[] {
+  const scoped: CompanionSettings = {
+    ...settings,
+    addressIndex: entry.addressIndex,
+    visibleAccounts: entry.visibleAccounts,
+  };
+  return allAddresses(entry, scoped)
+    .slice(0, Math.max(1, entry.visibleAccounts))
+    .map((account, index) => ({
+      ...account,
+      ordinal: index + 1,
+      name: settings.accountNames[account.address.toLowerCase()] ?? `账户 ${index + 1}`,
+    }));
+}
+
+/** How many accounts a wallet can reveal: what the device exported, times the depth. */
+export function maxAccounts(entry: WalletRecord, settings: CompanionSettings): number {
+  if (isSolanaChain(settings.chainId)) return entry.addresses?.length ?? 0;
+  return listAccounts(entry, settings.schemeId).length * Math.max(1, settings.addressCount);
+}
+
+export function Switcher({
+  onClose,
+  balances,
+}: {
+  onClose: () => void;
+  balances: Record<string, string>;
+}): ReactNode {
+  const {
+    wallets,
+    wallet,
+    settings,
+    updateSettings,
+    activateWallet,
+    renameWallet,
+    forgetWallet,
+    navigate,
+    show,
+  } = useCompanion();
+  const [expanded, setExpanded] = useState<string | null>(wallet?.id ?? null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [confirming, setConfirming] = useState<string | null>(null);
+
+  const close = (action: () => void) => () => {
+    onClose();
+    action();
+  };
+
+  return (
+    <>
+      {wallets.map((entry) => {
+        const open = expanded === entry.id;
+        const active = entry.id === wallet?.id;
+        const itsAccounts = accountsOf(entry, settings);
+        const cap = maxAccounts(entry, settings);
+        return (
+          <div key={entry.id}>
+            {confirming === entry.id ? (
+              <div className="np-list__item" style={{ borderRadius: 12, gap: 8 }}>
+                <span className="np-grow np-body--tight">移除「{entry.name}」？</span>
+                <Button
+                  size="small"
+                  variant="danger-soft"
+                  onClick={() => {
+                    forgetWallet(entry.id);
+                    setConfirming(null);
+                    show('已移除钱包');
+                  }}
+                >
+                  移除
+                </Button>
+                <Button size="small" variant="ghost" onClick={() => setConfirming(null)}>
+                  取消
+                </Button>
+              </div>
+            ) : (
+              <div className="np-list__item" style={{ borderRadius: 12 }}>
+                <button
+                  type="button"
+                  className="np-icon-btn np-icon-btn--plain"
+                  onClick={() => setExpanded(open ? null : entry.id)}
+                  aria-expanded={open}
+                  aria-label={open ? '收起' : '展开'}
+                >
+                  <span style={{ opacity: 0.5, fontSize: 12 }}>{open ? '⌃' : '⌄'}</span>
+                </button>
+
+                {renaming === entry.id ? (
+                  <TextField
+                    className="np-input"
+                    style={{ padding: '6px 10px', fontSize: 14 }}
+                    value={draft}
+                    autoFocus
+                    maxLength={24}
+                    onChange={setDraft}
+                    onBlur={() => {
+                      renameWallet(entry.id, draft);
+                      setRenaming(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
+                    }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className="np-grow"
+                    style={ROW_BUTTON}
+                    onClick={() => setExpanded(open ? null : entry.id)}
+                  >
+                    <span className="np-subtitle">{entry.name}</span>
+                  </button>
+                )}
+
+                {active ? <CheckIcon size={18} /> : null}
+                <button
+                  type="button"
+                  className="np-icon-btn np-icon-btn--plain"
+                  aria-label="重命名钱包"
+                  onClick={() => {
+                    setRenaming(entry.id);
+                    setDraft(entry.name);
+                  }}
+                >
+                  <PencilIcon />
+                </button>
+                <button
+                  type="button"
+                  className="np-icon-btn np-icon-btn--plain"
+                  aria-label="移除钱包"
+                  onClick={() => setConfirming(entry.id)}
+                >
+                  <TrashIcon />
+                </button>
+              </div>
+            )}
+
+            {open
+              ? itsAccounts.map((account, index) => (
+                  <div
+                    key={account.path}
+                    className="np-list__item"
+                    style={{ borderRadius: 12, paddingLeft: 14 }}
+                  >
+                    {renaming === account.address ? (
+                      <TextField
+                        className="np-input"
+                        style={{ padding: '6px 10px', fontSize: 14 }}
+                        value={draft}
+                        autoFocus
+                        onChange={setDraft}
+                        onBlur={() => {
+                          updateSettings({
+                            accountNames: {
+                              ...settings.accountNames,
+                              [account.address.toLowerCase()]: draft.trim() || account.name,
+                            },
+                          });
+                          setRenaming(null);
+                        }}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className="np-grow"
+                        style={{ ...ROW_BUTTON, minWidth: 0 }}
+                        onClick={() => {
+                          if (!active) activateWallet(entry.id);
+                          updateSettings({ addressIndex: index });
+                          onClose();
+                        }}
+                      >
+                        <span style={{ display: 'block', minWidth: 0 }}>
+                          <span className="np-subtitle" style={{ display: 'block' }}>
+                            {account.name}
+                          </span>
+                          <span className="np-mono np-ink-3" style={{ fontSize: 12 }}>
+                            {shortAddress(account.address, 6, 4)}
+                          </span>
+                        </span>
+                      </button>
+                    )}
+
+                    <span className="np-num np-ink-3">
+                      {balances[account.address.toLowerCase()] ?? ''}
+                    </span>
+                    {active && index === settings.addressIndex ? <CheckIcon size={18} /> : null}
+                    <button
+                      type="button"
+                      className="np-icon-btn np-icon-btn--plain"
+                      aria-label="重命名账户"
+                      onClick={() => {
+                        setRenaming(account.address);
+                        setDraft(account.name);
+                      }}
+                    >
+                      <PencilIcon />
+                    </button>
+                  </div>
+                ))
+              : null}
+
+            {/* Same rank as an account row, because that is what pressing it produces. */}
+            {open ? (
+              <button
+                type="button"
+                className="np-list__item"
+                style={{ borderRadius: 12, paddingLeft: 14 }}
+                onClick={() => {
+                  if (!active) activateWallet(entry.id);
+                  if (itsAccounts.length >= cap) {
+                    show('没有更多可显示地址了，请到「设置 → 账户与派生」提高派生数量');
+                    return;
+                  }
+                  updateWallet(entry.id, { visibleAccounts: itsAccounts.length + 1 });
+                  onClose();
+                }}
+              >
+                <span
+                  style={{
+                    width: 30,
+                    height: 30,
+                    minWidth: 30,
+                    borderRadius: 999,
+                    background: 'var(--np-bg-sunken)',
+                    display: 'grid',
+                    placeItems: 'center',
+                  }}
+                >
+                  <PlusIcon size={16} />
+                </span>
+                <span className="np-grow np-subtitle">添加账户</span>
+                <span className="np-body np-body--tight np-ink-3">
+                  {itsAccounts.length} / {cap}
+                </span>
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
+
+      <Button variant="secondary" block onClick={close(() => navigate({ name: 'connect' }))}>
+        添加钱包
+      </Button>
+      <div className="np-body np-body--tight np-center np-ink-3">
+        {wallets.length} 个钱包 · {chainMeta(settings.chainId)?.name ?? ''}
+      </div>
+    </>
+  );
+}
+
+const ROW_BUTTON = {
+  background: 'none',
+  border: 0,
+  padding: 0,
+  textAlign: 'left' as const,
+  font: 'inherit',
+  color: 'inherit',
+  cursor: 'pointer',
+};

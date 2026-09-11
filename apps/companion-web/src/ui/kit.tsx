@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
 import { qr as qrTokens } from '@netproof/ui';
+import { TextField } from '@netproof/ui/text-field';
 import { ChevronLeftIcon } from './icons';
 
 /**
@@ -457,6 +458,55 @@ export function CameraPanel({
         </div>
       ) : null}
       <div className="np-body np-body--tight np-center">{hint}</div>
+    </div>
+  );
+}
+
+/**
+ * Password field with a reveal toggle.
+ *
+ * Composing-safe like every other text field (`@netproof/ui/text-field`): a phone keyboard
+ * composing characters into a controlled input corrupts them, and a passcode is exactly the
+ * kind of string a user cannot check by eye afterwards.
+ */
+export function PasswordField({
+  value,
+  onChange,
+  placeholder,
+  autoFocus,
+  onEnter,
+  id,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  placeholder?: string;
+  autoFocus?: boolean;
+  onEnter?: () => void;
+  id?: string;
+}): ReactNode {
+  const [reveal, setReveal] = useState(false);
+  return (
+    <div className="np-row">
+      <TextField
+        {...(id !== undefined ? { id } : {})}
+        className="np-input np-grow"
+        type={reveal ? 'text' : 'password'}
+        value={value}
+        {...(placeholder !== undefined ? { placeholder } : {})}
+        {...(autoFocus ? { autoFocus } : {})}
+        onChange={onChange}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') onEnter?.();
+        }}
+      />
+      <button
+        type="button"
+        className="np-icon-btn"
+        onClick={() => setReveal((previous) => !previous)}
+        aria-label={reveal ? '隐藏' : '显示'}
+      >
+        {reveal ? '🙈' : '👁'}
+      </button>
     </div>
   );
 }

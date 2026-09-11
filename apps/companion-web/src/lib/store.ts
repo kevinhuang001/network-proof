@@ -1,4 +1,5 @@
 import type { ConnectedWallet, CompanionSettings, PendingRequest } from '@netproof/companion';
+import type { PasscodeRecord } from './lock';
 import { DEFAULT_SETTINGS } from '@netproof/companion';
 
 /**
@@ -25,6 +26,8 @@ const SETTINGS_KEY = `${PREFIX}settings.v1`;
 const ORIGINS_KEY = `${PREFIX}origins.v1`;
 const PENDING_KEY = `${PREFIX}pending.v1`;
 const ACTIVITY_KEY = `${PREFIX}activity.v1`;
+const PASSCODE_KEY = `${PREFIX}passcode.v1`;
+const LOCKED_KEY = `${PREFIX}locked.v1`;
 
 function storage(): Storage | null {
   try {
@@ -292,6 +295,48 @@ export function recordActivity(record: ActivityRecord): void {
 
 export function clearActivity(): void {
   storage()?.removeItem(ACTIVITY_KEY);
+}
+
+
+// ---------------------------------------------------------------------------
+// Lock
+// ---------------------------------------------------------------------------
+
+/**
+ * The passcode verifier, and whether the app is currently locked.
+ *
+ * The verifier is not a secret and is not treated as one: it is an Argon2id output, stored
+ * so the passcode can be checked without ever storing the passcode. Losing it (clearing
+ * storage) simply means setting a new one.
+ */
+export function loadPasscode(): PasscodeRecord | null {
+  const stored = read<PasscodeRecord>(PASSCODE_KEY);
+  return stored && typeof stored.verifier === 'string' ? stored : null;
+}
+
+export function savePasscode(record: PasscodeRecord | null): void {
+  const area = storage();
+  if (!area) return;
+  if (record) area.setItem(PASSCODE_KEY, JSON.stringify(record));
+  else area.removeItem(PASSCODE_KEY);
+}
+
+/**
+ * Whether the app should come up locked.
+ *
+ * Only persisted when a passcode exists. Without one, "locked" would be a screen anyone
+ * can dismiss, and surviving a reload would give it a permanence it has not earned — a
+ * refresh revealing the wallet is the honest behaviour.
+ */
+export function loadLocked(): boolean {
+  return loadPasscode() !== null && read<boolean>(LOCKED_KEY) === true;
+}
+
+export function saveLocked(locked: boolean): void {
+  const area = storage();
+  if (!area) return;
+  if (locked && loadPasscode()) area.setItem(LOCKED_KEY, 'true');
+  else area.removeItem(LOCKED_KEY);
 }
 
 // ---------------------------------------------------------------------------

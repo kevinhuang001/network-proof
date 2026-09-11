@@ -300,9 +300,9 @@ export function HomeScreen(): ReactNode {
       )}
 
       {solana ? null : (
-        <Button variant="ghost" block onClick={() => navigate({ name: 'wallets' })}>
-          管理账户
-        </Button>
+        <div className="np-body np-body--tight np-center np-ink-3">
+          切换和管理都在右上角
+        </div>
       )}
     </div>
   );
