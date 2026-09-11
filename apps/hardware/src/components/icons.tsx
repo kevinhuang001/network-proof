@@ -127,11 +127,21 @@ export function CheckIcon({ size = 24, className }: IconProps): ReactNode {
   );
 }
 
-export function GearIcon({ size = 24, className }: IconProps): ReactNode {
+/** Settings. Drawn rather than written, so it looks the same on every device. */
+export function GearIcon({ size = 22, className }: IconProps): ReactNode {
   return (
     <Svg size={size} className={className}>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 3v2.2M12 18.8V21M4.2 7.5l1.9 1.1M17.9 15.4l1.9 1.1M4.2 16.5l1.9-1.1M17.9 8.6l1.9-1.1" />
+      <circle cx="12" cy="12" r="3.1" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.06A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.06A1.7 1.7 0 0 0 4.6 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 8.9 4.6h.08A1.7 1.7 0 0 0 10 3.04V3a2 2 0 1 1 4 0v.06a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 8.9v.08a1.7 1.7 0 0 0 1.56 1.02H21a2 2 0 1 1 0 4h-.06a1.7 1.7 0 0 0-1.54 1.03z" />
+    </Svg>
+  );
+}
+
+/** Back chevron. A glyph like '‹' renders at a different weight on every device. */
+export function ChevronLeftIcon({ size = 22, className }: IconProps): ReactNode {
+  return (
+    <Svg size={size} className={className}>
+      <path d="M14.5 5.5 8 12l6.5 6.5" />
     </Svg>
   );
 }

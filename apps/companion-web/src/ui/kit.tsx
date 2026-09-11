@@ -3,11 +3,56 @@ import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
 import { qr as qrTokens } from '@netproof/ui';
+import { ChevronLeftIcon } from './icons';
 
 /**
  * Presentational primitives and the camera/QR helpers, shared by every screen of
  * the web companion.
  */
+
+/**
+ * Screen header: back control on the left, title centred, optional action right.
+ *
+ * The back control is always the first thing in the top-left corner, because that is
+ * where every phone user's thumb already goes.
+ */
+export function Header({
+  title,
+  subtitle,
+  onBack,
+  action,
+}: {
+  title: string;
+  subtitle?: string;
+  onBack?: () => void;
+  action?: ReactNode;
+}): ReactNode {
+  return (
+    <header className="np-header">
+      <div className="np-header__side">
+        {onBack ? (
+          <button
+            type="button"
+            className="np-icon-btn np-icon-btn--plain"
+            onClick={onBack}
+            aria-label="返回"
+          >
+            <ChevronLeftIcon size={22} />
+          </button>
+        ) : null}
+      </div>
+      <div className="np-grow np-center">
+        <h1 className="np-header__title">{title}</h1>
+        {subtitle ? (
+          <div className="np-label" style={{ marginTop: 2 }}>
+            {subtitle}
+          </div>
+        ) : null}
+      </div>
+      <div className="np-header__side np-header__side--end">{action}</div>
+    </header>
+  );
+}
 
 export function Badge({
   children,

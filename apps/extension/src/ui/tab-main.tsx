@@ -110,14 +110,14 @@ function Tab(): ReactNode {
 
   if (!ready || !settings) {
     return (
-      <div className="np-app np-app--wide" style={{ alignItems: 'center', paddingTop: 120 }}>
+      <div className="np-app" style={{ alignItems: 'center', paddingTop: 120 }}>
         <Spinner />
       </div>
     );
   }
 
   return (
-    <div className="np-app np-app--wide">
+    <div className="np-app">
       {route.name === 'connect' ? (
         <ConnectScreen
           existing={wallet}
@@ -490,7 +490,7 @@ function ApproveScreen({
 
   if (state.step === 'loading') {
     return (
-      <div className="np-app np-app--wide" style={{ alignItems: 'center', paddingTop: 120 }}>
+      <div className="np-app" style={{ alignItems: 'center', paddingTop: 120 }}>
         <Spinner />
       </div>
     );

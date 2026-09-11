@@ -11,7 +11,7 @@ import {
   PasswordMeter,
 } from '../components/primitives';
 import { MnemonicGrid, MnemonicQuiz } from '../components/Mnemonic';
-import { ShieldIcon } from '../components/icons';
+import { GearIcon, ShieldIcon } from '../components/icons';
 import { useSession } from '../state/session';
 
 /**
@@ -46,7 +46,7 @@ export function WelcomeScreen({
           onClick={onDiagnostics}
           aria-label="设置"
         >
-          ⚙
+          <GearIcon size={22} />
         </button>
       </div>
 

@@ -278,7 +278,7 @@ function Shell(): ReactNode {
   }
 
   return (
-    <div className="np-app np-app--wide">
+    <div className="np-app">
       {/* No network and account pills until a device has been paired: an empty
           "Ethereum / 未连接" header is chrome that describes nothing. */}
       {wallet ? <TopBar /> : null}

@@ -14,7 +14,7 @@ import {
   type PendingRequest,
 } from '@netproof/companion';
 import { useCompanion } from '../App';
-import { Alert, Badge, Button, CopyButton, KeyValue, Toast, useToast } from '../ui/kit';
+import { Alert, Badge, Button, CopyButton, Header, KeyValue, Toast, useToast } from '../ui/kit';
 import { useVisibleAccounts } from './Wallet';
 
 /**
@@ -35,13 +35,9 @@ export function SettingsScreen(): ReactNode {
   useEffect(() => setDraft(settings), [settings]);
 
   return (
-    <div className="np-main">
-      <button type="button" className="np-btn np-btn--ghost np-btn--small" onClick={() => navigate({ name: 'home' })}>
-        ‹ 钱包
-      </button>
-      <h2 className="np-headline" style={{ fontSize: 22 }}>
-        设置
-      </h2>
+    <>
+      <Header title="设置" onBack={() => navigate({ name: 'home' })} />
+      <div className="np-main">
 
       <div className="np-card">
         <div className="np-label">网络</div>
@@ -160,6 +156,7 @@ export function SettingsScreen(): ReactNode {
       </Button>
       <Toast message={toast} />
     </div>
+    </>
   );
 }
 
@@ -182,13 +179,9 @@ export function AdvancedScreen(): ReactNode {
   const current = accounts[settings.addressIndex] ?? accounts[0];
 
   return (
-    <div className="np-main">
-      <button type="button" className="np-btn np-btn--ghost np-btn--small" onClick={() => navigate({ name: 'settings' })}>
-        ‹ 设置
-      </button>
-      <h2 className="np-headline" style={{ fontSize: 22 }}>
-        高级
-      </h2>
+    <>
+      <Header title="高级" onBack={() => navigate({ name: 'settings' })} />
+      <div className="np-main">
 
       <div className="np-card">
         <div className="np-label">派生方案</div>
@@ -291,6 +284,7 @@ export function AdvancedScreen(): ReactNode {
         返回设置
       </Button>
     </div>
+    </>
   );
 }
 
@@ -432,13 +426,9 @@ export function DeveloperScreen(): ReactNode {
   }
 
   return (
-    <div className="np-main">
-      <button type="button" className="np-btn np-btn--ghost np-btn--small" onClick={() => navigate({ name: 'settings' })}>
-        ‹ 设置
-      </button>
-      <h2 className="np-headline" style={{ fontSize: 22 }}>
-        开发者工具
-      </h2>
+    <>
+      <Header title="开发者工具" onBack={() => navigate({ name: 'settings' })} />
+      <div className="np-main">
       <Alert tone="info" title="与真实 dApp 走同一条代码路径">
         网页无法向其它网站注入 <span className="np-mono">window.ethereum</span>，所以这里直接调用插件版本
         同一套 <span className="np-mono">handleRpc</span> 策略层。只读调用转发给节点，
@@ -564,6 +554,7 @@ export function DeveloperScreen(): ReactNode {
       </Button>
       <Toast message={toast} />
     </div>
+    </>
   );
 }
 

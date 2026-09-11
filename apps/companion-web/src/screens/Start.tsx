@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useCompanion } from '../App';
 import { Button } from '../ui/kit';
 import { BrandMark } from '../ui/brand';
+import { GearIcon } from '../ui/icons';
 
 /**
  * The companion's empty state.
@@ -22,7 +23,7 @@ export function StartScreen(): ReactNode {
           onClick={() => navigate({ name: 'settings' })}
           aria-label="设置"
         >
-          ⚙
+          <GearIcon size={22} />
         </button>
       </div>
 

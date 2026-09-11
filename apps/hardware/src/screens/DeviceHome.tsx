@@ -12,6 +12,7 @@ import { QrDisplay } from '../components/QrDisplay';
 import {
   ChainBadge,
   CheckIcon,
+  GearIcon,
   EyeIcon,
   KeyIcon,
   PlusIcon,
@@ -51,7 +52,7 @@ export function DeviceHomeScreen({
             onClick={onSettings}
             aria-label="设置"
           >
-            ⚙
+            <GearIcon size={22} />
           </button>
         }
       />

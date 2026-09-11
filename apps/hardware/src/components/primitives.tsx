@@ -1,5 +1,6 @@
 import type { ChangeEvent, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
+import { ChevronLeftIcon } from './icons';
 
 /** Small presentational primitives shared by every screen. */
 
@@ -19,7 +20,7 @@ export function Header({
       <div className="np-header__side">
         {onBack ? (
           <button type="button" className="np-icon-btn np-icon-btn--plain" onClick={onBack} aria-label="返回">
-            ‹
+            <ChevronLeftIcon size={22} />
           </button>
         ) : null}
       </div>
