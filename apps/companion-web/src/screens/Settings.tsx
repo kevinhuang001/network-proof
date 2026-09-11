@@ -36,6 +36,9 @@ export function SettingsScreen(): ReactNode {
 
   return (
     <div className="np-main">
+      <button type="button" className="np-btn np-btn--ghost np-btn--small" onClick={() => navigate({ name: 'home' })}>
+        ‹ 钱包
+      </button>
       <h2 className="np-headline" style={{ fontSize: 22 }}>
         设置
       </h2>
@@ -180,6 +183,9 @@ export function AdvancedScreen(): ReactNode {
 
   return (
     <div className="np-main">
+      <button type="button" className="np-btn np-btn--ghost np-btn--small" onClick={() => navigate({ name: 'settings' })}>
+        ‹ 设置
+      </button>
       <h2 className="np-headline" style={{ fontSize: 22 }}>
         高级
       </h2>
@@ -427,6 +433,9 @@ export function DeveloperScreen(): ReactNode {
 
   return (
     <div className="np-main">
+      <button type="button" className="np-btn np-btn--ghost np-btn--small" onClick={() => navigate({ name: 'settings' })}>
+        ‹ 设置
+      </button>
       <h2 className="np-headline" style={{ fontSize: 22 }}>
         开发者工具
       </h2>

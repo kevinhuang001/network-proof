@@ -266,10 +266,12 @@ export function App(): ReactNode {
 }
 
 function Shell(): ReactNode {
-  const { route } = useCompanion();
+  const { route, wallet } = useCompanion();
   return (
     <div className="np-app np-app--wide">
-      <TopBar />
+      {/* No network and account pills until a device has been paired: an empty
+          "Ethereum / 未连接" header is chrome that describes nothing. */}
+      {wallet ? <TopBar /> : null}
       {route.name === 'home' ? <HomeScreen /> : null}
       {route.name === 'connect' ? <ConnectScreen /> : null}
       {route.name === 'accounts' ? <AccountsScreen /> : null}
@@ -308,6 +310,14 @@ function TopBar(): ReactNode {
   return (
     <>
       <header className="np-header" style={{ gap: 8 }}>
+        <button
+          type="button"
+          className="np-icon-btn np-icon-btn--plain"
+          onClick={() => navigate({ name: 'home' })}
+          aria-label="回到钱包首页"
+        >
+          <BrandMark />
+        </button>
         <button
           type="button"
           className="np-chip"
@@ -438,3 +448,20 @@ function TopBar(): ReactNode {
 }
 
 export { Alert, Button };
+
+/**
+ * The wallet's own mark.
+ *
+ * Doubles as the way home: every screen is reachable from the top bar, so the bar
+ * needs exactly one always-present control, and a logo is the one thing users already
+ * expect to be tappable.
+ */
+export function BrandMark({ size = 22 }: { size?: number }): ReactNode {
+  return (
+    <svg width={size} height={size} viewBox="0 0 128 128" aria-hidden="true">
+      <rect width="128" height="128" rx="30" fill="#0B0B0F" />
+      <path d="M34 88V40h13l18 27V40h13v48H65L47 61v27H34z" fill="#FFFFFF" />
+      <circle cx="90" cy="50" r="8" fill="#0ECB81" />
+    </svg>
+  );
+}

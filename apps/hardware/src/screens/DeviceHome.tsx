@@ -10,6 +10,7 @@ import {
 import { Alert, Button, Header, haptic } from '../components/primitives';
 import { QrDisplay } from '../components/QrDisplay';
 import {
+  ChainBadge,
   CheckIcon,
   EyeIcon,
   KeyIcon,
@@ -356,6 +357,22 @@ export function WalletsScreen({
  * along in the same payload. The *companion* decides which network to display, so
  * choosing here would only be a second place to get it wrong.
  */
+/**
+ * Networks this export covers, shown with their marks.
+ *
+ * One export serves all of them: EVM account xpubs are identical across every EVM
+ * chain, and the Solana addresses travel in the same payload. The device does not pick
+ * — the companion does — so this is a statement of what is included, not a choice.
+ */
+const SUPPORTED_NETWORKS = [
+  { chainId: 1, label: 'Ethereum' },
+  { chainId: 56, label: 'BNB Chain' },
+  { chainId: 137, label: 'Polygon' },
+  { chainId: 42161, label: 'Arbitrum' },
+  { chainId: 8453, label: 'Base' },
+  { chainId: 501, label: 'Solana' },
+] as const;
+
 export function LoginQrScreen({ onBack }: { onBack: () => void }): ReactNode {
   const { wallet, deviceInfo, settings, activeWallet, mnemonic, passphrase } = useSession();
 
@@ -403,16 +420,22 @@ export function LoginQrScreen({ onBack }: { onBack: () => void }): ReactNode {
         />
 
         <div className="np-card np-card--sunken">
-          <div className="np-label">包含的网络</div>
-          <div className="np-row np-row--wrap" style={{ gap: 6, marginTop: 8 }}>
-            {['Ethereum', 'BNB', 'Polygon', 'Arbitrum', 'Base', '其它 EVM'].map((label) => (
-              <span key={label} className="np-badge">
-                {label}
-              </span>
+          <div className="np-label">支持的网络</div>
+          <div className="np-grid-3" style={{ marginTop: 10 }}>
+            {SUPPORTED_NETWORKS.map((network) => (
+              <div
+                key={network.label}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <ChainBadge chainId={network.chainId} size={30} />
+                <span style={{ fontSize: 11, opacity: 0.75 }}>{network.label}</span>
+              </div>
             ))}
-            <span className="np-badge np-badge--accent">
-              Solana · {settings.solanaAddressCount} 个地址
-            </span>
           </div>
         </div>
       </div>
