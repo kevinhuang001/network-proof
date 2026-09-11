@@ -3262,7 +3262,7 @@ function ss(e, t) {
   });
 }
 async function cs(e) {
-  const t = chrome.runtime.getURL(`${In}#/approve/${e}`), r = (await chrome.tabs.query({ url: chrome.runtime.getURL(`${In}*`) }))[0];
+  const t = chrome.runtime.getURL(`${In}#/sign/${e}`), r = (await chrome.tabs.query({ url: chrome.runtime.getURL(`${In}*`) }))[0];
   if ((r == null ? void 0 : r.id) !== void 0) {
     await chrome.tabs.update(r.id, { url: t, active: !0 }), r.windowId !== void 0 && await chrome.windows.update(r.windowId, { focused: !0 });
     return;

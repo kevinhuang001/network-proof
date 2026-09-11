@@ -123,25 +123,67 @@ async function route(
   });
 }
 
-/** Persist the request, open the approval tab, and await the user + device. */
+/**
+ * Ask the user, and surface the question where they will actually see it.
+ *
+ * A request that opens nothing is a request that never happens. Connecting needs no camera, so
+ * it is asked in the toolbar popup — the thing the user's browser is already telling them to
+ * click. Signing needs a camera, and a popup closes the moment it loses focus to a permission
+ * prompt, so that one gets a tab. Either way the badge goes up, because the popup can only be
+ * opened by the user, not by us.
+ */
 function queueApproval(request: PendingRequest, settings: CompanionSettings): Promise<unknown> {
   return new Promise<unknown>((resolve, reject) => {
     void (async () => {
       await putPending(request);
       resolvers.set(request.id, { resolve, reject });
-      await openApprovalTab(request.id);
+      await markPending(1);
+      await surfaceRequest(request);
 
       // A request nobody answers would otherwise hang the page forever.
       setTimeout(() => {
         if (!resolvers.has(request.id)) return;
         resolvers.delete(request.id);
         void removePending(request.id);
+        void markPending(0);
         reject({ code: ERRORS.userRejected.code, message: '请求已超时，请重新发起' });
       }, 10 * 60 * 1000);
 
       void settings;
     })();
   });
+}
+
+/** How many requests are still waiting, as the icon's badge. */
+function raiseBadge(): void {
+  void loadPending().then((all) => markPending(all.length));
+}
+
+/** A pending request has to be visible from outside the wallet. */
+async function markPending(count: number): Promise<void> {
+  try {
+    await chrome.action.setBadgeBackgroundColor({ color: '#2b6bff' });
+    await chrome.action.setBadgeText({ text: count > 0 ? String(count) : '' });
+  } catch {
+    // A browser without the badge API is not a reason to drop the request.
+  }
+}
+
+async function surfaceRequest(request: PendingRequest): Promise<void> {
+  if (request.kind === 'connect') {
+    // No camera involved, so the popup can host it. `openPopup` is recent and can refuse
+    // without a user gesture; the tab below is the fallback that always works.
+    try {
+      const action = chrome.action as typeof chrome.action & { openPopup?: () => Promise<void> };
+      if (typeof action.openPopup === 'function') {
+        await action.openPopup();
+        return;
+      }
+    } catch {
+      // Fall through to the tab.
+    }
+  }
+  await openApprovalTab(request.id);
 }
 
 async function openApprovalTab(id: string): Promise<void> {
@@ -161,6 +203,7 @@ function settle(message: ApprovalResult): void {
   if (!resolver) return;
   resolvers.delete(message.id);
   void removePending(message.id);
+  void markPending(0);
   if (message.error) resolver.reject(message.error);
   else resolver.resolve(message.result);
 }
@@ -177,6 +220,7 @@ export async function completeApproval(
   const request = await getPending(id);
   if (!request) return;
   await removePending(id);
+  raiseBadge();
   const resolver = resolvers.get(id);
   if (!resolver) return;
   resolvers.delete(id);

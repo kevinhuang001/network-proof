@@ -1,0 +1,1 @@
+import{c as t,m as a}from"./browser-store-DvcgQnyQ.js";(async()=>{const o=await t();a({storage:o,surface:{kind:"popup",resolveRequest:(e,r)=>{chrome.runtime.sendMessage({type:"approval-result",id:e,...r})},openInTab:e=>{chrome.tabs.create({url:chrome.runtime.getURL(`tab.html#${e}`)}),window.close()}}})})();
