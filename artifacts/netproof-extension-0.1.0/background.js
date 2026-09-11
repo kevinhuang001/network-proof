@@ -32,7 +32,7 @@ function ct(e, t, n, r) {
   const i = (t >>> 0) + (r >>> 0);
   return { h: e + n + (i / 2 ** 32 | 0) | 0, l: i | 0 };
 }
-const Lr = (e, t, n) => (e >>> 0) + (t >>> 0) + (n >>> 0), Fr = (e, t, n, r) => t + n + r + (e / 2 ** 32 | 0) | 0, Nr = (e, t, n, r) => (e >>> 0) + (t >>> 0) + (n >>> 0) + (r >>> 0), Dr = (e, t, n, r, i) => t + n + r + i + (e / 2 ** 32 | 0) | 0, $r = (e, t, n, r, i) => (e >>> 0) + (t >>> 0) + (n >>> 0) + (r >>> 0) + (i >>> 0), kr = (e, t, n, r, i, o) => t + n + r + i + o + (e / 2 ** 32 | 0) | 0;
+const Lr = (e, t, n) => (e >>> 0) + (t >>> 0) + (n >>> 0), Nr = (e, t, n, r) => t + n + r + (e / 2 ** 32 | 0) | 0, Fr = (e, t, n, r) => (e >>> 0) + (t >>> 0) + (n >>> 0) + (r >>> 0), Dr = (e, t, n, r, i) => t + n + r + i + (e / 2 ** 32 | 0) | 0, $r = (e, t, n, r, i) => (e >>> 0) + (t >>> 0) + (n >>> 0) + (r >>> 0) + (i >>> 0), kr = (e, t, n, r, i, o) => t + n + r + i + o + (e / 2 ** 32 | 0) | 0;
 function _e(e) {
   return e instanceof Uint8Array || ArrayBuffer.isView(e) && e.constructor.name === "Uint8Array" && "BYTES_PER_ELEMENT" in e && e.BYTES_PER_ELEMENT === 1;
 }
@@ -516,7 +516,7 @@ class ri extends Ce {
     for (let O = 0; O < 16; O++, r += 4)
       wt[O] = n.getUint32(r), gt[O] = n.getUint32(r += 4);
     for (let O = 16; O < 80; O++) {
-      const P = wt[O - 15] | 0, U = gt[O - 15] | 0, K = Rt(P, U, 1) ^ Rt(P, U, 8) ^ We(P, U, 7), it = It(P, U, 1) ^ It(P, U, 8) ^ Ve(P, U, 7), j = wt[O - 2] | 0, D = gt[O - 2] | 0, ot = Rt(j, D, 19) ^ Jt(j, D, 61) ^ We(j, D, 6), et = It(j, D, 19) ^ Qt(j, D, 61) ^ Ve(j, D, 6), nt = Nr(it, et, gt[O - 7], gt[O - 16]), lt = Dr(nt, K, ot, wt[O - 7], wt[O - 16]);
+      const P = wt[O - 15] | 0, U = gt[O - 15] | 0, K = Rt(P, U, 1) ^ Rt(P, U, 8) ^ We(P, U, 7), it = It(P, U, 1) ^ It(P, U, 8) ^ Ve(P, U, 7), j = wt[O - 2] | 0, D = gt[O - 2] | 0, ot = Rt(j, D, 19) ^ Jt(j, D, 61) ^ We(j, D, 6), et = It(j, D, 19) ^ Qt(j, D, 61) ^ Ve(j, D, 6), nt = Fr(it, et, gt[O - 7], gt[O - 16]), lt = Dr(nt, K, ot, wt[O - 7], wt[O - 16]);
       wt[O] = lt | 0, gt[O] = nt | 0;
     }
     let { Ah: i, Al: o, Bh: s, Bl: c, Ch: a, Cl: f, Dh: d, Dl: b, Eh: p, El: w, Fh: h, Fl: E, Gh: x, Gl: R, Hh: H, Hl: M } = this;
@@ -524,7 +524,7 @@ class ri extends Ce {
       const P = Rt(p, w, 14) ^ Rt(p, w, 18) ^ Jt(p, w, 41), U = It(p, w, 14) ^ It(p, w, 18) ^ Qt(p, w, 41), K = p & h ^ ~p & x, it = w & E ^ ~w & R, j = $r(M, U, it, ni[O], gt[O]), D = kr(j, H, P, K, ei[O], wt[O]), ot = j | 0, et = Rt(i, o, 28) ^ Jt(i, o, 34) ^ Jt(i, o, 39), nt = It(i, o, 28) ^ Qt(i, o, 34) ^ Qt(i, o, 39), lt = i & s ^ i & a ^ s & a, st = o & c ^ o & f ^ c & f;
       H = x | 0, M = R | 0, x = h | 0, R = E | 0, h = p | 0, E = w | 0, { h: p, l: w } = ct(d | 0, b | 0, D | 0, ot | 0), d = a | 0, b = f | 0, a = s | 0, f = c | 0, s = i | 0, c = o | 0;
       const xt = Lr(ot, nt, st);
-      i = Fr(xt, D, et, lt), o = xt | 0;
+      i = Nr(xt, D, et, lt), o = xt | 0;
     }
     ({ h: i, l: o } = ct(this.Ah | 0, this.Al | 0, i | 0, o | 0)), { h: s, l: c } = ct(this.Bh | 0, this.Bl | 0, s | 0, c | 0), { h: a, l: f } = ct(this.Ch | 0, this.Cl | 0, a | 0, f | 0), { h: d, l: b } = ct(this.Dh | 0, this.Dl | 0, d | 0, b | 0), { h: p, l: w } = ct(this.Eh | 0, this.El | 0, p | 0, w | 0), { h, l: E } = ct(this.Fh | 0, this.Fl | 0, h | 0, E | 0), { h: x, l: R } = ct(this.Gh | 0, this.Gl | 0, x | 0, R | 0), { h: H, l: M } = ct(this.Hh | 0, this.Hl | 0, H | 0, M | 0), this.set(i, o, s, c, a, f, d, b, p, w, h, E, x, R, H, M);
   }
@@ -625,7 +625,7 @@ function Ln(e, t, n = () => {
     n(e[r], `${t}[${r}]`);
   return e;
 }
-const Z = (e, t, n) => Y(e, t, n), Fn = V;
+const Z = (e, t, n) => Y(e, t, n), Nn = V;
 function ci(e, t = "") {
   if (typeof e != "string") {
     const n = t && `"${t}" `;
@@ -643,18 +643,18 @@ function Pt(e, t) {
     throw new TypeError(`"${t}" is invalid: expected function, got ${typeof e}`);
   return e;
 }
-const Nn = He, yt = (...e) => kt(...e), Re = (e) => Hn(e), de = _e, Le = (e) => zr(e), ce = /* @__PURE__ */ BigInt(0), sn = /* @__PURE__ */ BigInt(1), ai = (e) => e ? `"${e}" ` : "";
+const Fn = He, yt = (...e) => kt(...e), Re = (e) => Hn(e), de = _e, Le = (e) => zr(e), ce = /* @__PURE__ */ BigInt(0), sn = /* @__PURE__ */ BigInt(1), ai = (e) => e ? `"${e}" ` : "";
 function At(e, t = "") {
   if (typeof e != "boolean")
     throw new TypeError(ai(t) + "expected boolean, got type=" + typeof e);
   return e;
 }
-function Fe(e) {
+function Ne(e) {
   if (typeof e == "bigint") {
     if (!Bt(e))
       throw new RangeError("positive bigint expected, got " + e);
   } else
-    Fn(e);
+    Nn(e);
   return e;
 }
 function Kt(e, t = "") {
@@ -668,7 +668,7 @@ function Kt(e, t = "") {
   }
 }
 function ee(e) {
-  const t = Fe(e).toString(16);
+  const t = Ne(e).toString(16);
   return t.length & 1 ? "0" + t : t;
 }
 function Dn(e) {
@@ -682,17 +682,17 @@ function Lt(e) {
 function $n(e) {
   return Dn(He(fi(Y(e)).reverse()));
 }
-function Ne(e, t) {
+function Fe(e, t) {
   if (V(t), t === 0)
     throw new Error("zero output length is invalid");
-  e = Fe(e);
+  e = Ne(e);
   const n = t * 2, r = e.toString(16);
   if (r.length > n)
     throw new RangeError("number is too large");
   return Hn(r.padStart(n, "0"));
 }
 function kn(e, t) {
-  return Ne(e, t).reverse();
+  return Fe(e, t).reverse();
 }
 function fi(e) {
   return Uint8Array.from(Z(e));
@@ -945,7 +945,7 @@ function an(e, t) {
   return o ? 1 : s ? 0 : -1;
 }
 function xi(e, t) {
-  if (t !== void 0 && Fn(t), e <= k)
+  if (t !== void 0 && Nn(t), e <= k)
     throw new Error("invalid n length: expected positive n, got " + e);
   if (t !== void 0 && t < 1)
     throw new Error("invalid n length: expected positive bit length, got " + t);
@@ -1038,7 +1038,7 @@ class dn {
     return n || fn.set(this, n = yi(this.ORDER)), n(this, t);
   }
   toBytes(t) {
-    return this.isLE ? kn(t, this.BYTES) : Ne(t, this.BYTES);
+    return this.isLE ? kn(t, this.BYTES) : Fe(t, this.BYTES);
   }
   fromBytes(t, n = !1) {
     Z(t);
@@ -1087,7 +1087,7 @@ function Vn(e, t, n = !1) {
   if (r < o || r > 1024)
     throw new Error("expected " + o + "-1024 bytes of input, got " + r);
   const s = n ? $n(e) : Lt(e), c = J(s, t - L) + L;
-  return n ? kn(c, i) : Ne(c, i);
+  return n ? kn(c, i) : Fe(c, i);
 }
 const qe = /* @__PURE__ */ BigInt(0), jt = /* @__PURE__ */ BigInt(1), Ei = /* @__PURE__ */ BigInt(4), pe = 16, un = 128, vi = 5, ln = 2 ** 31;
 function Gt(e) {
@@ -1374,14 +1374,14 @@ function Ui(e, t) {
   };
 }
 const Li = /* @__PURE__ */ BigInt(0);
-class Fi extends Error {
+class Ni extends Error {
   constructor(t = "") {
     super(t);
   }
 }
 const at = {
   // asn.1 DER encoding utils
-  Err: Fi,
+  Err: Ni,
   // Basic building block is TLV (Tag-Length-Value)
   _tlv: {
     encode: (e, t) => {
@@ -1438,7 +1438,7 @@ const at = {
   _int: {
     encode(e) {
       const { Err: t } = at;
-      if (Fe(e), e < Li)
+      if (Ne(e), e < Li)
         throw new t("integer: negative integers are not allowed");
       let n = ee(e);
       if (Number.parseInt(n[0], 16) & 8 && (n = "00" + n), n.length & 1)
@@ -1478,7 +1478,7 @@ const at = {
   }
 }, ge = (Object.freeze(at._tlv), Object.freeze(at._int), Object.freeze(at));
 const pn = (e, t) => (e + (e >= 0 ? t : -t) / er) / t;
-function Ni(e, t, n) {
+function Fi(e, t, n) {
   Pn("scalar", e, ft, n);
   const [[r, i], [o, s]] = t, c = pn(s * e, n), a = pn(-i * e, n);
   let f = e - c * r - a * o, d = -c * i - a * s;
@@ -1553,8 +1553,8 @@ function $i(e, t = {}) {
       let I;
       try {
         I = r.sqrt(S);
-      } catch (F) {
-        const $ = F instanceof Error ? ": " + F.message : "";
+      } catch (N) {
+        const $ = N instanceof Error ? ": " + N.message : "";
         throw new Error("bad point: is not on curve, sqrt error" + $);
       }
       R();
@@ -1594,7 +1594,7 @@ function $i(e, t = {}) {
   function lt(g) {
     if (!E || !E.basises)
       throw new Error("no endo");
-    return Ni(g, E.basises, i.ORDER);
+    return Fi(g, E.basises, i.ORDER);
   }
   function st(g, u, y, m) {
     if (!i.isValid(m))
@@ -1696,10 +1696,10 @@ function $i(e, t = {}) {
     add(u) {
       nt(u);
       const { X: y, Y: m, Z: _ } = this, { X: A, Y: v, Z: S } = u;
-      let I = r.ZERO, C = r.ZERO, T = r.ZERO, F = r.mul(y, A), $ = r.mul(m, v), q = r.mul(_, S), G = r.add(y, m), N = r.add(A, v);
-      G = r.mul(G, N), N = r.add(F, $), G = r.sub(G, N), N = r.add(y, _);
+      let I = r.ZERO, C = r.ZERO, T = r.ZERO, N = r.mul(y, A), $ = r.mul(m, v), q = r.mul(_, S), G = r.add(y, m), F = r.add(A, v);
+      G = r.mul(G, F), F = r.add(N, $), G = r.sub(G, F), F = r.add(y, _);
       let W = r.add(A, S);
-      return N = r.mul(N, W), W = r.add(F, q), N = r.sub(N, W), W = r.add(m, _), I = r.add(v, S), W = r.mul(W, I), I = r.add($, q), W = r.sub(W, I), T = K(N), I = r.mul(U, q), T = r.add(I, T), I = r.sub($, T), T = r.add($, T), C = r.mul(I, T), $ = r.add(F, F), $ = r.add($, F), q = K(q), N = r.mul(U, N), $ = r.add($, q), q = r.sub(F, q), q = K(q), N = r.add(N, q), F = r.mul($, N), C = r.add(C, F), F = r.mul(W, N), I = r.mul(G, I), I = r.sub(I, F), F = r.mul(G, $), T = r.mul(W, T), T = r.add(T, F), new B(I, C, T);
+      return F = r.mul(F, W), W = r.add(N, q), F = r.sub(F, W), W = r.add(m, _), I = r.add(v, S), W = r.mul(W, I), I = r.add($, q), W = r.sub(W, I), T = K(F), I = r.mul(U, q), T = r.add(I, T), I = r.sub($, T), T = r.add($, T), C = r.mul(I, T), $ = r.add(N, N), $ = r.add($, N), q = K(q), F = r.mul(U, F), $ = r.add($, q), q = r.sub(N, q), q = K(q), F = r.add(F, q), N = r.mul($, F), C = r.add(C, N), N = r.mul(W, F), I = r.mul(G, I), I = r.sub(I, N), N = r.mul(G, $), T = r.mul(W, T), T = r.add(T, N), new B(I, C, T);
     }
     subtract(u) {
       return nt(u), this.add(u.negate());
@@ -1717,8 +1717,8 @@ function $i(e, t = {}) {
     multiply(u) {
       if (!i.isValidNot0(u))
         throw new RangeError("invalid scalar: out of range");
-      const { p: y, f: m } = ht.mulSecret(this, u, s, Ft);
-      return Ft([y, m])[0];
+      const { p: y, f: m } = ht.mulSecret(this, u, s, Nt);
+      return Nt([y, m])[0];
     }
     /**
      * Non-constant-time multiplication. Uses width-4 wNAF with GLV endomorphism splitting
@@ -1735,7 +1735,7 @@ function $i(e, t = {}) {
       if (m === vt)
         return y;
       if (ht.hasWindowSize(this))
-        return ht.mulUnsafe(y, m, Ft);
+        return ht.mulUnsafe(y, m, Nt);
       const _ = [], A = [];
       return st(_, A, y, m), Ie(B, _, A);
     }
@@ -1790,7 +1790,7 @@ function $i(e, t = {}) {
       return At(u, "isCompressed"), this.assertValidity(), O(B, this, u);
     }
     toHex(u = !0) {
-      return Nn(this.toBytes(u));
+      return Fn(this.toBytes(u));
     }
     toString() {
       return `<Point ${this.is0() ? "ZERO" : this.toHex()}>`;
@@ -1798,7 +1798,7 @@ function $i(e, t = {}) {
   };
   l(B, "BASE", new B(o.Gx, o.Gy, r.ONE)), l(B, "ZERO", new B(r.ZERO, r.ONE, r.ZERO)), l(B, "Fp", r), l(B, "Fn", i);
   let Q = B;
-  const Ft = (g) => Bi(Q, g), ht = new Hi(Q, h);
+  const Nt = (g) => Bi(Q, g), ht = new Hi(Q, h);
   return ht.bits >= 6 && Q.BASE.precompute(6), Object.freeze(Q.prototype), Object.freeze(Q), Q;
 }
 function nr(e) {
@@ -1952,10 +1952,10 @@ function Mi(e, t, n = {}) {
       const { r: u, s: y } = this, m = this.assertRecovery(), _ = m === 2 || m === 3 ? u + f : u;
       if (!c.isValid(_))
         throw new Error("invalid recovery id: sig.r+curve.n != R.x");
-      const A = c.toBytes(_), v = e.fromBytes(yt(nr((m & 1) === 0), A)), S = a.inv(_), I = et(Z(g, void 0, "msgHash")), C = a.create(-I * S), T = a.create(y * S), F = e.BASE.mulAddUnsafe(C, v, T);
-      if (F.is0())
+      const A = c.toBytes(_), v = e.fromBytes(yt(nr((m & 1) === 0), A)), S = a.inv(_), I = et(Z(g, void 0, "msgHash")), C = a.create(-I * S), T = a.create(y * S), N = e.BASE.mulAddUnsafe(C, v, T);
+      if (N.is0())
         throw new Error("invalid recovery: point at infinify");
-      return F.assertValidity(), F;
+      return N.assertValidity(), N;
     }
     // Signatures should be low-s, to prevent malleability.
     hasHighS() {
@@ -1968,7 +1968,7 @@ function Mi(e, t, n = {}) {
       return g === "recovered" ? (it(), yt(Uint8Array.of(this.assertRecovery()), m, _)) : yt(m, _);
     }
     toHex(g) {
-      return Nn(this.toBytes(g));
+      return Fn(this.toBytes(g));
     }
   }
   Object.freeze(D.prototype), Object.freeze(D);
@@ -1994,29 +1994,29 @@ function Mi(e, t, n = {}) {
       throw new Error("invalid private key");
     const S = [lt(v), lt(A)];
     if (_ != null && _ !== !1) {
-      const F = _ === !0 ? o(R.secretKey) : _;
-      S.push(Z(F, void 0, "extraEntropy"));
+      const N = _ === !0 ? o(R.secretKey) : _;
+      S.push(Z(N, void 0, "extraEntropy"));
     }
     const I = yt(...S), C = A;
-    function T(F) {
-      const $ = ot(F);
+    function T(N) {
+      const $ = ot(N);
       if (!a.isValidNot0($))
         return;
       const q = e.BASE.multiply($).toAffine(), G = a.create(q.x);
       if (G === ft)
         return;
-      let N;
+      let F;
       if (p !== void 0) {
-        const Nt = Lt(Vn(p(b), f)), Ar = a.inv(a.mul(Nt, $)), Rr = a.mul(Nt, C), Ir = a.mul(Nt, v);
-        N = a.create(Ar * a.create(Rr + Ir * G));
+        const Ft = Lt(Vn(p(b), f)), Ar = a.inv(a.mul(Ft, $)), Rr = a.mul(Ft, C), Ir = a.mul(Ft, v);
+        F = a.create(Ar * a.create(Rr + Ir * G));
       } else {
-        const Nt = wi($, f);
-        N = a.create(Nt * a.create(C + G * v));
+        const Ft = wi($, f);
+        F = a.create(Ft * a.create(C + G * v));
       }
-      if (N === ft)
+      if (F === ft)
         return;
-      let W = K(q.x, q.y, G), Xe = N;
-      return y && O(N) && (Xe = a.neg(N), W ^= 1), new D(G, Xe, M ? void 0 : W);
+      let W = K(q.x, q.y, G), Xe = F;
+      return y && O(F) && (Xe = a.neg(F), W ^= 1), new D(G, Xe, M ? void 0 : W);
     }
     return { seed: I, k2sig: T };
   }
@@ -2024,7 +2024,7 @@ function Mi(e, t, n = {}) {
     const { seed: y, k2sig: m } = xt(B, g, u);
     return di(r.outputLen, a.BYTES, s)(y, m).toBytes(u.format);
   }
-  function Ft(B, g, u, y = {}) {
+  function Nt(B, g, u, y = {}) {
     const { lowS: m, prehash: _, format: A } = be(y, H);
     if (u = Z(u, void 0, "publicKey"), g = st(g, _), !de(B)) {
       const v = B instanceof D ? ", use sig.toBytes()" : "";
@@ -2035,11 +2035,11 @@ function Mi(e, t, n = {}) {
       const v = D.fromBytes(B, A), S = e.fromBytes(u);
       if (S.is0() || m && v.hasHighS())
         return !1;
-      const { r: I, s: C } = v, T = et(g), F = a.inv(C), $ = a.create(T * F), q = a.create(I * F), G = e.BASE.mulAddUnsafe($, S, q);
+      const { r: I, s: C } = v, T = et(g), N = a.inv(C), $ = a.create(T * N), q = a.create(I * N), G = e.BASE.mulAddUnsafe($, S, q);
       if (G.is0())
         return !1;
-      const N = G.toAffine();
-      return !(a.create(N.x) !== I || A === "recovered" && v.recovery !== K(N.x, N.y, I));
+      const F = G.toAffine();
+      return !(a.create(F.x) !== I || A === "recovered" && v.recovery !== K(F.x, F.y, I));
     } catch {
       return !1;
     }
@@ -2056,7 +2056,7 @@ function Mi(e, t, n = {}) {
     lengths: R,
     Point: e,
     sign: Q,
-    verify: Ft,
+    verify: Nt,
     recoverPublicKey: ht,
     Signature: D,
     hash: r
@@ -2743,7 +2743,7 @@ function Uo(e) {
 function Lo(e) {
   return e >= Zt;
 }
-function Fo(e, t) {
+function No(e, t) {
   const n = Co(t);
   let r = e;
   for (const i of n) {
@@ -2756,7 +2756,7 @@ function Fo(e, t) {
   }
   return r;
 }
-function No(e) {
+function Fo(e) {
   if (e.length === 33) {
     const t = Tt.Point.fromBytes(e).toAffine();
     return Do(t.x, t.y);
@@ -2796,11 +2796,11 @@ function $o(e) {
 }
 BigInt(Number.MAX_SAFE_INTEGER);
 function ko(e, t, n, r) {
-  const i = Ho(t), o = Et.fromExtendedKey(e), s = vn(i.receiveTemplate, n, r), c = vn(i.xpubPath, n), a = s.slice(c.length).replace(/^\//u, ""), f = a.length === 0 ? o : Fo(o, `m/${a}`);
+  const i = Ho(t), o = Et.fromExtendedKey(e), s = vn(i.receiveTemplate, n, r), c = vn(i.xpubPath, n), a = s.slice(c.length).replace(/^\//u, ""), f = a.length === 0 ? o : No(o, `m/${a}`);
   return {
     account: n,
     scheme: t,
-    address: No(f.publicKey),
+    address: Fo(f.publicKey),
     path: s,
     xpub: e
   };
@@ -3142,11 +3142,18 @@ function Er() {
   return chrome.storage.local;
 }
 async function zt(e) {
-  var n;
-  return (n = (await Er().get(e))[e]) != null ? n : null;
+  const n = (await Er().get(e))[e];
+  if (n == null) return null;
+  if (typeof n == "string")
+    try {
+      return JSON.parse(n);
+    } catch {
+      return null;
+    }
+  return n;
 }
 async function ze(e, t) {
-  await Er().set({ [e]: t });
+  await Er().set({ [e]: JSON.stringify(t) });
 }
 async function es() {
   var t, n;

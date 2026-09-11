@@ -21,12 +21,14 @@ import {
 import { buildMessageRequest, buildTransactionRequest, forwardToNode } from '@netproof/companion';
 import type { PendingRequest } from '@netproof/companion';
 import { useCompanion } from '../App';
+import { useSurface } from '../surface';
 import { getPending, removePending } from '../lib/store';
 import {
   Alert,
   Badge,
   Button,
   CameraPanel,
+  Header,
   KeyValue,
   QrDisplay,
   Spinner,
@@ -63,6 +65,7 @@ type State =
   | { step: 'done'; title: string; detail: string; hash?: string; signature?: string };
 
 export function SignScreen({ id }: { id: string }): ReactNode {
+  const surface = useSurface();
   const { wallet, settings, navigate, refresh, show, addActivity } = useCompanion();
   const [state, setState] = useState<State>({ step: 'loading' });
   const evmRequestRef = useRef<EvmTransactionRequest | null>(null);
@@ -294,6 +297,25 @@ export function SignScreen({ id }: { id: string }): ReactNode {
       <div className="np-main" style={{ alignItems: 'center', paddingTop: 80 }}>
         <Spinner />
       </div>
+    );
+  }
+
+  // Everything before the scan — naming, the request itself, the transaction fields — is a
+  // normal screen and runs fine in a popup. It is the camera that cannot, so the hand-off
+  // happens here rather than at the door.
+  if (surface.kind === 'popup' && state.step === 'outgoing') {
+    return (
+      <>
+        <Header title="签名请求" onBack={() => navigate({ name: 'home' })} />
+        <div className="np-main">
+          <Alert tone="info" title="需要摄像头">
+            扫设备上的签名二维码要在完整页面里进行。
+          </Alert>
+          <Button block onClick={() => surface.openInTab?.(`/sign/${id}`)}>
+            在新标签页里继续
+          </Button>
+        </div>
+      </>
     );
   }
 

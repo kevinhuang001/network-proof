@@ -10,6 +10,7 @@ import {
 import { walletFromXpubMessage } from '@netproof/companion';
 import { TextField } from '@netproof/ui/text-field';
 import { useCompanion } from '../App';
+import { useSurface } from '../surface';
 import {
   Alert,
   Button,
@@ -29,6 +30,7 @@ import {
  */
 export function ConnectScreen(): ReactNode {
   const { wallets, pair, navigate, show } = useCompanion();
+  const surface = useSurface();
   const collectorRef = useRef(new FrameCollector('NP-XPUB'));
   const [scanning, setScanning] = useState(true);
   const [preview, setPreview] = useState<XpubExportMessage | null>(null);
@@ -71,6 +73,24 @@ export function ConnectScreen(): ReactNode {
     show('已添加钱包');
     navigate({ name: 'home' });
   };
+
+  // A popup cannot hold a camera prompt: it closes the moment it loses focus, and the
+  // permission dialog takes focus. So the flow moves to a tab, in one tap.
+  if (surface.kind === 'popup') {
+    return (
+      <>
+        <Header title="添加钱包" onBack={() => navigate({ name: 'home' })} />
+        <div className="np-main">
+          <Alert tone="info" title="需要摄像头">
+            扫码要在完整页面里进行。
+          </Alert>
+          <Button block onClick={() => surface.openInTab?.('/connect')}>
+            在新标签页里扫码
+          </Button>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

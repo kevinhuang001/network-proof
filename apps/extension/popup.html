@@ -10,11 +10,14 @@
       the loading frame, is about twenty pixels wide. So the popup states its own size.
     -->
     <style>
+      /* The whole wallet runs here, so it gets a wallet's window: 360px wide (a phone) and
+         tall enough for the asset list, with the app's own sheets scrolling inside it. */
       html,
       body {
         width: 360px;
-        min-height: 420px;
+        height: 560px;
         margin: 0;
+        overflow: hidden;
       }
     </style>
   </head>
