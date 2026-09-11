@@ -191,7 +191,6 @@ export function Switcher({
                   </button>
                 )}
 
-                {active ? <span className="np-badge np-badge--accent">使用中</span> : null}
                 <button
                   type="button"
                   className="np-icon-btn np-icon-btn--plain"
@@ -276,7 +275,9 @@ export function Switcher({
                     <span className="np-num np-ink-3">
                       {balances[account.address.toLowerCase()] ?? ''}
                     </span>
-                    {active && index === settings.addressIndex ? <CheckIcon size={18} /> : null}
+                    {active && index === settings.addressIndex ? (
+                      <span className="np-badge np-badge--accent">使用中</span>
+                    ) : null}
                     <button
                       type="button"
                       className="np-icon-btn np-icon-btn--plain"
