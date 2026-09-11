@@ -62,13 +62,7 @@ export function maxAccounts(entry: WalletRecord, settings: CompanionSettings): n
   return listAccounts(entry, settings.schemeId).length * Math.max(1, settings.addressCount);
 }
 
-export function Switcher({
-  onClose,
-  balances,
-}: {
-  onClose: () => void;
-  balances: Record<string, string>;
-}): ReactNode {
+export function Switcher({ onClose }: { onClose: () => void }): ReactNode {
   const {
     wallets,
     wallet,
@@ -272,9 +266,6 @@ export function Switcher({
                       </button>
                     )}
 
-                    <span className="np-num np-ink-3">
-                      {balances[account.address.toLowerCase()] ?? ''}
-                    </span>
                     {active && index === settings.addressIndex ? (
                       <span className="np-badge np-badge--accent">使用中</span>
                     ) : null}

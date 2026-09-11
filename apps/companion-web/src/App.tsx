@@ -3,7 +3,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import {
   DEFAULT_SETTINGS,
   chainLabel,
-  fetchBalance,
   type CompanionSettings,
   type ConnectedWallet,
   type PendingRequest,
@@ -51,12 +50,11 @@ import {
   AssetScreen,
   HomeScreen,
   ReceiveScreen,
-  formatEth,
   useVisibleAccounts,
 } from './screens/Wallet';
 import { SendScreen } from './screens/Send';
 import { LockScreen } from './screens/Lock';
-import { Switcher, accountsOf } from './screens/Switcher';
+import { Switcher } from './screens/Switcher';
 import { AdvancedScreen, DeveloperScreen, SettingsScreen } from './screens/Settings';
 
 /**
@@ -473,15 +471,12 @@ function Shell(): ReactNode {
  * paired, and the user asked which of their two wallets they were looking at.
  */
 function TopBar(): ReactNode {
-  const { settings, updateSettings, navigate, wallet, wallets, lock } = useCompanion();
+  const { settings, updateSettings, navigate, wallet, lock } = useCompanion();
   const [openMenu, setOpenMenu] = useState<'network' | 'account' | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const { accounts } = useVisibleAccounts();
   const current = accounts[settings.addressIndex] ?? accounts[0];
-  const balances = useNativeBalances(
-    wallets.flatMap((entry) => accountsOf(entry, settings).map((account) => account.address)),
-  );
 
   return (
     <>
@@ -608,50 +603,13 @@ function TopBar(): ReactNode {
                   ))}
               </>
             ) : (
-              <Switcher onClose={() => setOpenMenu(null)} balances={balances} />
+              <Switcher onClose={() => setOpenMenu(null)} />
             )}
           </div>
         </div>
       ) : null}
     </>
   );
-}
-
-/**
- * Native balances for every account in every wallet, for the switcher.
- *
- * Native only, and deliberately so: pricing every token on every chain is a job for an
- * indexer, and this wallet refuses to talk to one. Rows therefore show what the chain
- * itself can answer in one call each.
- */
-function useNativeBalances(addresses: string[]): Record<string, string> {
-  const { settings } = useCompanion();
-  const [balances, setBalances] = useState<Record<string, string>>({});
-  const key = addresses.map((entry) => entry.toLowerCase()).sort().join(',');
-
-  useEffect(() => {
-    const rpcUrl = settings.rpcUrls[settings.chainId];
-    if (!rpcUrl || key.length === 0) return;
-    let cancelled = false;
-    void (async () => {
-      const next: Record<string, string> = {};
-      for (const address of key.split(',')) {
-        try {
-          const raw = await fetchBalance(address, { rpcUrl, chainId: settings.chainId });
-          next[address] = formatEth(raw);
-        } catch {
-          // Leave the row blank rather than inventing a number.
-        }
-      }
-      if (!cancelled) setBalances(next);
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, settings.chainId, settings.rpcUrls]);
-
-  return balances;
 }
 
 export { Alert, Button };
