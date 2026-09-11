@@ -191,7 +191,7 @@ export function Switcher({
                   </button>
                 )}
 
-                {active ? <CheckIcon size={18} /> : null}
+                {active ? <span className="np-badge np-badge--accent">使用中</span> : null}
                 <button
                   type="button"
                   className="np-icon-btn np-icon-btn--plain"

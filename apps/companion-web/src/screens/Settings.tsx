@@ -15,7 +15,7 @@ import {
 } from '@netproof/companion';
 import { useCompanion } from '../App';
 import { Alert, Badge, Button, CopyButton, Header, KeyValue, Toast, useToast } from '../ui/kit';
-import { ChainLogo, CheckIcon, ChevronRightIcon } from '../ui/icons';
+import { ChainLogo, ChevronRightIcon } from '../ui/icons';
 import { PasswordField } from '../ui/kit';
 import { createPasscodeRecord, verifyPasscode } from '../lib/lock';
 import { loadPasscode } from '../lib/store';
@@ -109,7 +109,7 @@ export function SettingsScreen(): ReactNode {
                     {shortRpc(draft.rpcUrls[chain.chainId])}
                   </div>
                 </button>
-                {active ? <CheckIcon size={20} /> : null}
+                {active ? <Badge tone="accent">当前</Badge> : null}
               </div>
             );
           })}

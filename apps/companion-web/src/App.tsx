@@ -606,9 +606,6 @@ function TopBar(): ReactNode {
                       {chainId === settings.chainId ? <Badge tone="accent">当前</Badge> : null}
                     </button>
                   ))}
-                <Button variant="ghost" onClick={() => { setOpenMenu(null); navigate({ name: 'settings' }); }}>
-                  RPC 与其它设置
-                </Button>
               </>
             ) : (
               <Switcher onClose={() => setOpenMenu(null)} balances={balances} />
