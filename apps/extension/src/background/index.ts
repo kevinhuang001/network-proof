@@ -145,7 +145,7 @@ function queueApproval(request: PendingRequest, settings: CompanionSettings): Pr
 }
 
 async function openApprovalTab(id: string): Promise<void> {
-  const url = chrome.runtime.getURL(`${APPROVAL_PATH}#/approve/${id}`);
+  const url = chrome.runtime.getURL(`${APPROVAL_PATH}#/sign/${id}`);
   const existing = await chrome.tabs.query({ url: chrome.runtime.getURL(`${APPROVAL_PATH}*`) });
   const tab = existing[0];
   if (tab?.id !== undefined) {

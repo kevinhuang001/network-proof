@@ -16,6 +16,11 @@ void (async () => {
     storage: store,
     surface: {
       kind: 'popup',
+      resolveRequest: (id, outcome) => {
+        // The service worker is holding the dApp's promise open; this is the only thing that
+        // lets go of it. Without it a site waits for ever after the user has approved.
+        void chrome.runtime.sendMessage({ type: 'approval-result', id, ...outcome });
+      },
       openInTab: (hash) => {
         void chrome.tabs.create({ url: chrome.runtime.getURL(`tab.html#${hash}`) });
         window.close();

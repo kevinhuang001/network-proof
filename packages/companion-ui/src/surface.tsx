@@ -20,6 +20,15 @@ export interface Surface {
   kind: 'page' | 'popup';
   /** Opens a route in a full tab, for the screens a popup cannot host. */
   openInTab?: (hash: string) => void;
+  /**
+   * Hands the outcome of a dApp's request back to whoever is waiting for it.
+   *
+   * In the extension that is the service worker, which is holding the dApp's promise open; in
+   * the plain web app there is no waiting dApp and this is absent. Without it the interface
+   * completes a signature and the site waits for ever — the request was answered on screen and
+   * never answered on the wire.
+   */
+  resolveRequest?: (id: string, outcome: { result?: unknown; error?: { code: number; message: string } }) => void;
 }
 
 const SurfaceContext = createContext<Surface>({ kind: 'page' });

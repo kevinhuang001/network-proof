@@ -28,6 +28,21 @@ export async function createChromeStore(): Promise<KeyValueStore> {
     mirror.set(key, typeof value === 'string' ? value : JSON.stringify(value));
   }
 
+  /*
+   * The area keeps changing under a page that is already open: the service worker stores a
+   * request and *then* opens (or re-points) the approval tab. A mirror loaded once at boot
+   * would not have it, and the approval screen would report a request that "does not exist"
+   * — while a dApp waited for an answer.
+   */
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') return;
+    for (const [key, change] of Object.entries(changes)) {
+      const value = change.newValue;
+      if (value === undefined || value === null) mirror.delete(key);
+      else mirror.set(key, typeof value === 'string' ? value : JSON.stringify(value));
+    }
+  });
+
   return {
     getItem: (key) => mirror.get(key) ?? null,
     setItem: (key, value) => {

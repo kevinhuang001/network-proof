@@ -148,6 +148,11 @@ function parseRoute(hash: string): Route {
   if (path.startsWith('/receive/')) return { name: 'receive', token: path.slice('/receive/'.length) };
   if (path.startsWith('/receive')) return { name: 'receive' };
   if (path.startsWith('/add-token')) return { name: 'add-token' };
+  // `/approve/<id>` is what the extension's service worker opens when a dApp asks for
+  // something; `/sign/<id>` is what the interface itself navigates to. Both have to land on
+  // the approval screen — a route the router did not know fell through to the wallet home,
+  // which is why connecting a dApp did nothing at all: the request was on screen nowhere.
+  if (path.startsWith('/approve/')) return { name: 'sign', id: path.slice('/approve/'.length) };
   if (path.startsWith('/sign/')) return { name: 'sign', id: path.slice('/sign/'.length) };
   if (path.startsWith('/settings')) return { name: 'settings' };
   return { name: 'home' };

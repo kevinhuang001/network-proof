@@ -17,7 +17,13 @@
         width: 360px;
         height: 560px;
         margin: 0;
-        overflow: hidden;
+      }
+
+      /* The document scrolls. `overflow: hidden` here — to avoid a double scrollbar — made
+         every screen taller than the window unreachable, which is most of Settings. */
+      body {
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
       }
     </style>
   </head>

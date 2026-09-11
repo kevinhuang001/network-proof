@@ -23,6 +23,7 @@ import type { PendingRequest } from '@netproof/companion';
 import { useCompanion } from '../App';
 import { useSurface } from '../surface';
 import { getPending, removePending } from '../lib/store';
+import { useVisibleAccounts } from './Wallet';
 import {
   Alert,
   Badge,
@@ -54,6 +55,8 @@ type State =
   | { step: 'loading' }
   | { step: 'missing' }
   | { step: 'needs-wallet' }
+  /** A dApp is asking to see this wallet's accounts. */
+  | { step: 'connect'; request: PendingRequest }
   | { step: 'error'; message: string }
   | {
       step: 'outgoing';
@@ -66,7 +69,14 @@ type State =
 
 export function SignScreen({ id }: { id: string }): ReactNode {
   const surface = useSurface();
-  const { wallet, settings, navigate, refresh, show, addActivity } = useCompanion();
+  const resolve = useCallback(
+    (outcome: { result?: unknown; error?: { code: number; message: string } }): void => {
+      surface.resolveRequest?.(id, outcome);
+    },
+    [surface, id],
+  );
+  const { wallet, settings, navigate, refresh, show, addActivity, addOrigin } = useCompanion();
+  const { accounts } = useVisibleAccounts();
   const [state, setState] = useState<State>({ step: 'loading' });
   const evmRequestRef = useRef<EvmTransactionRequest | null>(null);
   const collectorRef = useRef(new FrameCollector('NP-SIG'));
@@ -91,8 +101,18 @@ export function SignScreen({ id }: { id: string }): ReactNode {
       return;
     }
     if (request.method === 'eth_requestAccounts' || request.kind === 'connect') {
-      // The web companion has no injected provider, so "connect" is just pairing.
-      setState({ step: 'needs-wallet' });
+      /*
+       * A connection request means two different things depending on the host.
+       *
+       * In the extension a dApp is waiting: it called `eth_requestAccounts` and the service
+       * worker is holding that promise open, so somebody has to approve or refuse the site. In
+       * the plain web app there is no injected provider and therefore no such caller — the
+       * "request" is just this screen's way of saying the wallet is not paired yet.
+       *
+       * `resolveRequest` is exactly the difference: only a host that can answer a page
+       * provides it.
+       */
+      setState(surface.resolveRequest ? { step: 'connect', request } : { step: 'needs-wallet' });
       return;
     }
 
@@ -154,6 +174,9 @@ export function SignScreen({ id }: { id: string }): ReactNode {
       const fail = (message: string): void => {
         removePending(request.id);
         setState({ step: 'error', message });
+        // A site that is waiting must be told, even when the answer is "no": a promise left
+        // open is a spinner in a dApp that never resolves.
+        resolve({ error: { code: 4001, message } });
       };
 
       if (response.id !== message.id) return fail('签名响应的请求 ID 不匹配，已忽略。');
@@ -194,6 +217,7 @@ export function SignScreen({ id }: { id: string }): ReactNode {
             detail: '校验通过。下方是完整的已签名载荷，你可以自行广播。',
             signature: response.raw,
           });
+          resolve({ result: response.raw });
           return;
         }
 
@@ -215,6 +239,8 @@ export function SignScreen({ id }: { id: string }): ReactNode {
             hash,
           });
           show('交易已广播');
+          // `eth_sendTransaction` resolves with the hash; that is what the dApp is holding.
+          resolve({ result: hash });
         } catch (caught) {
           // The signature is still valid; do not throw it away just because the node
           // was unreachable. Record it as failed-but-signed and show the payload.
@@ -231,6 +257,7 @@ export function SignScreen({ id }: { id: string }): ReactNode {
             detail: `广播时出错：${(caught as Error).message}。校验已通过，你可以复制下方的载荷自行广播。`,
             signature: response.raw,
           });
+          resolve({ error: { code: -32603, message: (caught as Error).message } });
         }
         return;
       }
@@ -244,8 +271,9 @@ export function SignScreen({ id }: { id: string }): ReactNode {
         signature: response.signature,
       });
       show('签名完成');
+      resolve({ result: response.signature });
     },
-    [forward, settings.autoBroadcast, show, addActivity, settings.chainId],
+    [forward, settings.autoBroadcast, show, addActivity, settings.chainId, resolve],
   );
 
   // `outgoing` covers only the state that has a message to display and frame;
@@ -313,6 +341,49 @@ export function SignScreen({ id }: { id: string }): ReactNode {
           </Alert>
           <Button block onClick={() => surface.openInTab?.(`/sign/${id}`)}>
             在新标签页里继续
+          </Button>
+        </div>
+      </>
+    );
+  }
+
+  if (state.step === 'connect') {
+    const { request } = state;
+    const account = accounts[settings.addressIndex] ?? accounts[0];
+    const decide = (allow: boolean): void => {
+      removePending(request.id);
+      if (allow) addOrigin(request.origin);
+      resolve(allow ? { result: null } : { error: { code: 4001, message: '用户拒绝了连接' } });
+      navigate({ name: 'home' });
+    };
+    return (
+      <>
+        <Header title="连接请求" onBack={() => decide(false)} />
+        <div className="np-main">
+          <div className="np-card">
+            <div className="np-label">网站</div>
+            <div className="np-subtitle" style={{ marginTop: 6, wordBreak: 'break-all' }}>
+              {request.origin}
+            </div>
+            {account ? (
+              <>
+                <div className="np-label" style={{ marginTop: 12 }}>
+                  将共享的账户
+                </div>
+                <div className="np-mono" style={{ marginTop: 6 }}>
+                  {account.address}
+                </div>
+              </>
+            ) : null}
+          </div>
+          <Alert tone="info">
+            只共享地址。任何签名都要扫二维码，由离线设备确认。
+          </Alert>
+          <Button block onClick={() => decide(true)}>
+            允许
+          </Button>
+          <Button variant="secondary" block onClick={() => decide(false)}>
+            拒绝
           </Button>
         </div>
       </>
@@ -510,6 +581,7 @@ export function SignScreen({ id }: { id: string }): ReactNode {
           variant="ghost"
           onClick={() => {
             removePending(id);
+            resolve({ error: { code: 4001, message: '用户拒绝了请求' } });
             refresh();
             navigate({ name: 'home' });
           }}

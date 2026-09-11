@@ -11,5 +11,13 @@ import { createChromeStore } from '../lib/browser-store';
  */
 void (async () => {
   const store = await createChromeStore();
-  mountCompanion({ storage: store });
+  mountCompanion({
+    storage: store,
+    surface: {
+      kind: 'page',
+      resolveRequest: (id, outcome) => {
+        void chrome.runtime.sendMessage({ type: 'approval-result', id, ...outcome });
+      },
+    },
+  });
 })();
