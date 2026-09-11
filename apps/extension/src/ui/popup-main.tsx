@@ -121,6 +121,17 @@ function Popup(): ReactNode {
         }
       }
     })();
+
+    // The popup is a fresh document each time it opens, so a single read is enough — but if it
+    // was opened *before* pairing finished, re-read when the tab tells us something changed.
+    const onChanged = (): void => {
+      void (async () => {
+        const wallet = await loadWallet();
+        if (wallet) window.location.reload();
+      })();
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
   }, []);
 
   if (state.status === 'loading') {

@@ -128,3 +128,29 @@ describe('extension storage', () => {
     }
   });
 });
+
+describe('storage encoding', () => {
+  it('reads the JSON strings the shared UI writes', async () => {
+    // The UI keeps a synchronous mirror and writes through a `localStorage`-shaped interface,
+    // so every value in this area is a JSON string. The worker read the raw value instead,
+    // got a string back, found no `wallets` array in it and reported "no wallet paired" — a
+    // popup that says "not connected" while the tab shows the wallet.
+    const paired = wallet();
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.wallets]: JSON.stringify({
+        wallets: [{ ...paired, accountIndex: 0, addressIndex: 0, visibleAccounts: 1, hiddenAccounts: [] }],
+        activeId: paired.masterFingerprint,
+      }),
+    });
+    const restored = await loadWallet();
+    expect(restored?.masterFingerprint).toBe(paired.masterFingerprint);
+  });
+
+  it('still reads the raw objects an older install wrote', async () => {
+    const paired = wallet();
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.wallets]: { wallets: [paired], activeId: paired.masterFingerprint },
+    });
+    expect((await loadWallet())?.masterFingerprint).toBe(paired.masterFingerprint);
+  });
+});
