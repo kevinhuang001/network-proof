@@ -94,6 +94,25 @@ async function dispatch(method: string, params: unknown[], context: RpcContext):
         ? [{ parentCapability: 'eth_accounts', caveats: [] }]
         : [];
 
+    /*
+     * EIP-2255: a wallet that answers `wallet_requestPermissions` is expected to answer
+     * `wallet_getPermissions` too, and connectors do check it after connecting. Answering
+     * with an unsupported-method error where a permission list is expected is the difference
+     * between "connected" and "nothing happened".
+     */
+    case 'wallet_getPermissions': {
+      if (!approvedOrigins.includes(origin)) return [];
+      return [{ parentCapability: 'eth_accounts', caveats: [] }];
+    }
+
+    /*
+     * EIP-5792: `{}` means "no optional capabilities". Saying so explicitly is better than an
+     * unsupported-method error, because a connector that asks is deciding whether to use
+     * batched calls, and "no" is a legitimate answer it can fall back from.
+     */
+    case 'wallet_getCapabilities':
+      return {};
+
     case 'wallet_requestPermissions':
       requireWallet(wallet);
       return [

@@ -640,3 +640,24 @@ describe('announcing a connection', () => {
     expect(hidden).not.toContain(offered[1]);
   });
 });
+
+describe('the probes a connector makes after connecting', () => {
+  it('answers wallet_getPermissions with the granted capability', async () => {
+    const wallet = makeWallet();
+    const { context: ctx } = context({ wallet, approvedOrigins: ['https://app.example.org'] });
+    const granted = await handleRpc('wallet_getPermissions', [], ctx);
+    expect(granted.result).toEqual([{ parentCapability: 'eth_accounts', caveats: [] }]);
+
+    // An unapproved site gets an empty list, not an error: EIP-2255 is a query.
+    const { context: unknown } = context({ wallet });
+    expect((await handleRpc('wallet_getPermissions', [], unknown)).result).toEqual([]);
+  });
+
+  it('answers wallet_getCapabilities with "none" instead of an unsupported error', async () => {
+    const wallet = makeWallet();
+    const { context: ctx } = context({ wallet, approvedOrigins: ['https://app.example.org'] });
+    // EIP-5792: `{}` is a legitimate "no optional capabilities" answer that a connector can
+    // fall back from, where a 4200 is an error it may treat as fatal.
+    expect((await handleRpc('wallet_getCapabilities', ['0xabc'], ctx)).result).toEqual({});
+  });
+});

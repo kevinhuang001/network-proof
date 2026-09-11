@@ -94,7 +94,7 @@ chrome.runtime.onConnect.addListener((port) => {
     void (async () => {
       try {
         if (message.type === 'approval-result') {
-          settle(message);
+          void settle(message);
           return;
         }
         if (message.type === 'provider-poke') {
@@ -121,7 +121,7 @@ chrome.runtime.onConnect.addListener((port) => {
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
   const candidate = message as { type?: string };
   if (candidate?.type === 'approval-result') {
-    settle(candidate as ApprovalResult);
+    void settle(candidate as ApprovalResult);
     sendResponse({ ok: true });
     return true;
   }
@@ -253,17 +253,32 @@ async function openApprovalTab(id: string): Promise<void> {
   await chrome.tabs.create({ url });
 }
 
-function settle(message: ApprovalResult): void {
+/**
+ * Finish an approval.
+ *
+ * The origin is written *here*, by the side that answers dApps, and before the caller is
+ * resolved. The interface also records it — that is what the user's click means — but its
+ * write goes through an asynchronous store adapter, so a site that calls `eth_accounts`
+ * immediately after `eth_requestAccounts` could reach this worker before the origin landed and
+ * be told, correctly and uselessly, that it is not approved yet. That is a connection that
+ * appears to succeed and then does nothing.
+ */
+async function settle(message: ApprovalResult): Promise<void> {
   const resolver = resolvers.get(message.id);
   if (!resolver) return;
+  const request = await getPending(message.id);
   resolvers.delete(message.id);
   void markPending(0);
-  void getPending(message.id).then((request) => {
-    if (request) lastApprovedOrigin = request.origin;
-  });
-  void announceIfConnected(message);
+
+  if (request) lastApprovedOrigin = request.origin;
+  if (request && !message.error) {
+    // Idempotent: a rejection leaves the origin unapproved.
+    await approveOrigin(request.origin);
+  }
   if (message.error) resolver.reject(message.error);
   else resolver.resolve(message.result);
+
+  void announceIfConnected(message, request?.origin ?? null);
 }
 
 /**
@@ -276,10 +291,9 @@ function settle(message: ApprovalResult): void {
  * `accountsChanged` event is what wallets emit at this point, and what SDKs like wagmi watch
  * for, so the page can recover without the user reloading anything.
  */
-async function announceIfConnected(message: ApprovalResult): Promise<void> {
+async function announceIfConnected(message: ApprovalResult, askedBy: string | null): Promise<void> {
   if (message.error) return;
-  const request = await getPending(message.id);
-  const origin = request?.origin ?? lastApprovedOrigin;
+  const origin = askedBy ?? lastApprovedOrigin;
   const port = origin ? originPorts.get(origin) : undefined;
   if (!origin || !port) return;
   const wallet = await loadWallet();
