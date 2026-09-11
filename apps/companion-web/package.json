@@ -1,0 +1,34 @@
+{
+  "name": "@netproof/companion-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "NetProof Companion (web) — watch-only companion wallet that signs through the air-gapped device over QR.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4174",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@netproof/companion": "workspace:*",
+    "@netproof/core": "workspace:*",
+    "@netproof/ui": "workspace:*",
+    "@noble/hashes": "2.4.0",
+    "jsqr": "1.4.0",
+    "qrcode": "1.5.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.2",
+    "@types/qrcode": "1.5.6",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "5.2.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vitest": "3.2.7"
+  }
+}

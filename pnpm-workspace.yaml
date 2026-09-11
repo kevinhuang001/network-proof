@@ -1,0 +1,8 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+
+# pnpm 11 blocks postinstall scripts by default. esbuild's install step only links
+# its platform binary; without it Vite/Vitest cannot start.
+allowBuilds:
+  esbuild: true

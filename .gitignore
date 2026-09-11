@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+.vite/
+coverage/
+.dev-certs/
+apps/hardware/android/app/build/
+apps/hardware/android/build/
+apps/hardware/android/.gradle/
+apps/hardware/android/local.properties
+apps/hardware/android/app/src/main/assets/public/
+artifacts/*.apk
+artifacts/*.jks

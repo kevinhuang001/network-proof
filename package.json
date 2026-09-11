@@ -1,0 +1,30 @@
+{
+  "name": "netproof-wallet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Air-gapped hardware wallet built from an offline Android phone (Capacitor) + Chrome extension companion wallet.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "pnpm -r test",
+    "test:watch": "pnpm --filter @netproof/core test:watch",
+    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm --filter @netproof/hardware build && pnpm --filter @netproof/companion-web build && pnpm --filter @netproof/extension build",
+    "build:hardware": "pnpm --filter @netproof/hardware build",
+    "build:companion": "pnpm --filter @netproof/companion-web build",
+    "build:extension": "pnpm --filter @netproof/extension build",
+    "dev:hardware": "pnpm --filter @netproof/hardware dev",
+    "dev:companion": "pnpm --filter @netproof/companion-web dev",
+    "dev:extension": "pnpm --filter @netproof/extension dev",
+    "serve:companion": "pnpm --filter @netproof/companion-web preview",
+    "android:sync": "pnpm --filter @netproof/hardware android:sync",
+    "apk": "bash scripts/build-apk.sh",
+    "verify": "pnpm typecheck && pnpm -r test && pnpm build"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  },
+  "packageManager": "pnpm@11.24.0"
+}

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  NetProof Air — air-gapped hardware wallet.
+
+  Deliberate departures from the Capacitor template, all security-relevant:
+
+  1. android:allowBackup="false" + dataExtractionRules — an encrypted vault is still
+     a vault, and there is no reason to hand adb or a cloud backup agent a copy of it.
+  2. No INTERNET permission. The app is meant to live in airplane mode forever, so the
+     OS should not merely be asked politely. Capacitor serves the WebView bundle by
+     intercepting https://localhost through androidx WebViewAssetLoader, which happens
+     before the network stack, so the app still loads. The Content-Security-Policy in
+     index.html is the primary control; this is defence in depth.
+
+     If a future Capacitor version ever did need the socket layer to serve assets, the
+     symptom would be a blank screen. The fix is to uncomment the INTERNET permission
+     at the bottom of this file — while understanding that doing so downgrades the
+     guarantee from "cannot reach the network" to "does not try to".
+  3. usesCleartextTraffic="false" + networkSecurityConfig — no plaintext HTTP, ever.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+    </application>
+
+    <!-- The camera is the entropy source: without it no wallet can be created. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="true" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
+    <!--
+      Read-only connectivity state, so the app can tell the user the truth.
+
+      ACCESS_NETWORK_STATE grants NO network capability: it only permits *reading*
+      whether a network exists. Without it, Android's WebView cannot register its
+      connectivity callback and `navigator.onLine` reports `true` forever, which
+      made an earlier build nag users who had correctly enabled airplane mode.
+
+      The permission that would grant network access is INTERNET, and that one is
+      deliberately absent below: the OS denies this app a socket outright, which is
+      a stronger guarantee than any runtime check.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Deliberately absent: INTERNET, ACCESS_WIFI_STATE. -->
+    <!--
+    <uses-permission android:name="android.permission.INTERNET" />
+    -->
+</manifest>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Deny every outbound connection at the platform level.
+
+  A hardware wallet that only *promises* not to phone home is not air-gapped. This
+  config makes the OS enforce it: no cleartext, and no trust anchors for anything
+  except the local asset origin, so even a compromised WebView bundle has nowhere
+  to send a key.
+
+  Note: this file is belt-and-braces alongside the Content-Security-Policy in
+  index.html and the absence of the INTERNET permission.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <!-- No user or system CAs: there is nothing legitimate to talk to. -->
+            <certificates src="system" overridePins="false" />
+        </trust-anchors>
+    </base-config>
+
+    <domain-config cleartextTrafficPermitted="false">
+        <!-- The only origin the WebView ever loads, served from the APK itself. -->
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

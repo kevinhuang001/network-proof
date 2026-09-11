@@ -1,0 +1,25 @@
+{
+  "name": "@netproof/companion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Framework-free companion-wallet logic: EIP-1193 policy, node access, watch-only account derivation.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@netproof/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.2",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}
