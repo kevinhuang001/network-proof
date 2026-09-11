@@ -5,7 +5,7 @@
  * injected by rewriting a `<script>` tag is blocked by any page with a strict CSP,
  * and one injected from the isolated world would be invisible to the page.
  *
- * This file has no imports on purpose — it is bundled as a classic IIFE and runs
+ * This file is bundled as a classic IIFE and runs
  * before any page script (`run_at: document_start`), so `window.ethereum` exists
  * by the time a dApp checks for it.
  *
@@ -20,17 +20,14 @@ interface RequestArguments {
 
 type Listener = (...args: unknown[]) => void;
 
-interface PendingCall {
-  resolve: (value: unknown) => void;
-  reject: (error: Error) => void;
-}
-
 import { CHANNEL_EVENT, CHANNEL_INFO, CHANNEL_REQUEST, CHANNEL_RESPONSE, PROVIDER_ICON, PROVIDER_INFO as PROVIDER_IDENTITY } from '../lib/channels';
+
+import { PendingCalls } from './pending';
 
 const PROVIDER_INFO = { ...PROVIDER_IDENTITY, icon: PROVIDER_ICON };
 
 class NetProofProvider {
-  private readonly pending = new Map<string, PendingCall>();
+  private readonly pending = new PendingCalls();
   private readonly listeners = new Map<string, Set<Listener>>();
   private chainId = '0x1';
   private accounts: string[] = [];
@@ -44,19 +41,16 @@ class NetProofProvider {
       if (event.source !== window || !event.data || typeof event.data !== 'object') return;
       const data = event.data as { channel?: string; id?: string; result?: unknown; error?: unknown; event?: string; data?: unknown };
       if (data.channel === CHANNEL_RESPONSE && data.id) {
-        const call = this.pending.get(data.id);
-        if (!call) return;
-        this.pending.delete(data.id);
-        if (data.error) {
-          const error = new Error((data.error as { message?: string }).message ?? '请求失败');
-          Object.assign(error, data.error as object);
-          call.reject(error);
-        } else {
-          call.resolve(data.result);
-        }
+        this.pending.settle(data.id, { result: data.result, error: data.error });
         return;
       }
       if (data.channel === CHANNEL_EVENT && typeof data.event === 'string') {
+        if (data.event === 'disconnect') {
+          // The connection is known to be gone, so nothing is coming: fail what is waiting
+          // instead of letting the dApp sit on a promise until its own timeout.
+          const detail = data.data as { message?: string } | undefined;
+          this.pending.failAll(detail?.message ?? '扩展后台已断开，请重试');
+        }
         this.emit(data.event, data.data);
       }
     });
@@ -110,7 +104,7 @@ class NetProofProvider {
   private requestRaw(method: string, params?: unknown[] | object): Promise<unknown> {
     const id = `np-${Date.now().toString(36)}-${(this.counter++).toString(36)}`;
     return new Promise<unknown>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      this.pending.add(id, { resolve, reject });
       window.postMessage(
         {
           channel: CHANNEL_REQUEST,
@@ -122,9 +116,7 @@ class NetProofProvider {
       );
       // A page that never hears back would hang forever.
       setTimeout(() => {
-        if (!this.pending.has(id)) return;
-        this.pending.delete(id);
-        reject(Object.assign(new Error('NetProof Companion 未响应请求'), { code: 4900 }));
+        this.pending.settle(id, { error: { code: 4900, message: 'NetProof Companion 未响应请求' } });
       }, 11 * 60 * 1000);
     });
   }
