@@ -74,7 +74,11 @@ export function useVisibleAccounts(): { accounts: WalletAccount[] } {
     return flat.map((entry, index) => ({
       ...entry,
       ordinal: index + 1,
-      name: settings.accountNames[entry.address.toLowerCase()] ?? `账户 ${index + 1}`,
+      // Named by derivation index, not by position in the list. A positional name means
+      // "账户 3" belongs to whoever is third today, so removing the second account silently
+      // renames the account the user knew as 3 to 2 — and the name they typed, keyed by
+      // address, no longer matches what the row says next to it.
+      name: settings.accountNames[entry.address.toLowerCase()] ?? `账户 ${entry.index + 1}`,
     }));
   }, [wallet, settings]);
 

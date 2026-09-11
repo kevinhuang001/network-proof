@@ -19,8 +19,8 @@ import {
   removePending,
   revokeOrigin,
   saveSettings,
-  saveWallet,
 } from '../src/lib/store';
+import { STORAGE_KEYS } from '@netproof/companion';
 
 /**
  * Tests for the extension's `chrome.storage` adapter.
@@ -54,9 +54,16 @@ describe('extension storage', () => {
     await clearWallet();
   });
 
+  /** Write the wallet the way the shared UI does: a list, with one active. */
+  async function pair(wallet: ReturnType<typeof wallet>): Promise<void> {
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.wallets]: { wallets: [{ ...wallet, accountIndex: 0, addressIndex: 0, visibleAccounts: 2, hiddenAccounts: [] }], activeId: wallet.masterFingerprint },
+    });
+  }
+
   it('round-trips the paired wallet', async () => {
     const paired = wallet();
-    await saveWallet(paired);
+    await pair(paired);
     const restored = await loadWallet();
     expect(restored?.masterFingerprint).toBe(paired.masterFingerprint);
     expect(restored?.accounts).toHaveLength(paired.accounts.length);
@@ -66,7 +73,7 @@ describe('extension storage', () => {
   });
 
   it('stores nothing secret', async () => {
-    await saveWallet(wallet());
+    await pair(wallet());
     const dump = (await dumpStorage()).toLowerCase();
     for (const forbidden of ['mnemonic', 'privatekey', 'private_key', '"seed"', 'xprv']) {
       expect(dump, `storage must not contain ${forbidden}`).not.toContain(forbidden);
@@ -110,7 +117,7 @@ describe('extension storage', () => {
   });
 
   it('agrees with the device on derived addresses after a round trip', async () => {
-    await saveWallet(wallet());
+    await pair(wallet());
     const restored = (await loadWallet())!;
     const account0 = restored.accounts.find(
       (entry) => entry.scheme === 'bip44' && entry.account === 0,

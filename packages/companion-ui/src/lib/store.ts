@@ -1,6 +1,6 @@
 import type { ConnectedWallet, CompanionSettings, PendingRequest } from '@netproof/companion';
 import type { PasscodeRecord } from './lock';
-import { DEFAULT_SETTINGS, defaultTokens } from '@netproof/companion';
+import { DEFAULT_SETTINGS, STORAGE_KEYS, STORAGE_PREFIX, defaultTokens } from '@netproof/companion';
 
 /**
  * Browser storage for the web companion.
@@ -18,18 +18,42 @@ import { DEFAULT_SETTINGS, defaultTokens } from '@netproof/companion';
  * device for a signature that the user still has to approve on its own screen.
  */
 
-const PREFIX = 'netproof.companion.';
-/** Pre-multi-wallet key. Read once, migrated, then removed. */
-const LEGACY_WALLET_KEY = `${PREFIX}wallet.v1`;
-const WALLETS_KEY = `${PREFIX}wallets.v1`;
-const SETTINGS_KEY = `${PREFIX}settings.v1`;
-const ORIGINS_KEY = `${PREFIX}origins.v1`;
-const PENDING_KEY = `${PREFIX}pending.v1`;
-const ACTIVITY_KEY = `${PREFIX}activity.v1`;
-const PASSCODE_KEY = `${PREFIX}passcode.v1`;
-const LOCKED_KEY = `${PREFIX}locked.v1`;
+const {
+  wallets: WALLETS_KEY,
+  legacyWallet: LEGACY_WALLET_KEY,
+  settings: SETTINGS_KEY,
+  origins: ORIGINS_KEY,
+  pending: PENDING_KEY,
+  activity: ACTIVITY_KEY,
+  tokens: TOKENS_KEY,
+  passcode: PASSCODE_KEY,
+  locked: LOCKED_KEY,
+} = STORAGE_KEYS;
+const PREFIX = STORAGE_PREFIX;
 
-function storage(): Storage | null {
+/**
+ * Where the wallet's data lives.
+ *
+ * The store is written against this interface rather than against `localStorage` so the same
+ * screens can run in a Chrome extension, where the data is in `chrome.storage.local` and every
+ * read is asynchronous. The extension hands in an adapter that reads that area once at boot
+ * and keeps a synchronous mirror: a wallet UI that had to `await` inside a render is a wallet
+ * UI rewritten, and the mirror is small — a few extended public keys and a settings object.
+ */
+export interface KeyValueStore {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+let adapter: KeyValueStore | null = null;
+
+/** Install the backing store. Called by each host before it renders. */
+export function setStoreAdapter(next: KeyValueStore | null): void {
+  adapter = next;
+}
+
+function browserStorage(): KeyValueStore | null {
   try {
     const probe = `${PREFIX}probe`;
     window.localStorage.setItem(probe, '1');
@@ -39,6 +63,10 @@ function storage(): Storage | null {
     // Private browsing and some embedded webviews throw rather than returning null.
     return null;
   }
+}
+
+function storage(): KeyValueStore | null {
+  return adapter ?? browserStorage();
 }
 
 function read<T>(key: string): T | null {
@@ -383,7 +411,6 @@ export function defaultAccountName(index: number): string {
 // Token list
 // ---------------------------------------------------------------------------
 
-const TOKENS_KEY = `${PREFIX}tokens.v1`;
 
 export interface StoredToken {
   address: string;

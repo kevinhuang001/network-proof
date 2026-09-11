@@ -1,5 +1,5 @@
 import type { CompanionSettings, ConnectedWallet, PendingRequest } from '@netproof/companion';
-import { DEFAULT_SETTINGS } from '@netproof/companion';
+import { DEFAULT_SETTINGS, STORAGE_KEYS } from '@netproof/companion';
 
 /**
  * Extension storage.
@@ -14,10 +14,10 @@ import { DEFAULT_SETTINGS } from '@netproof/companion';
  * Google's servers.
  */
 
-const WALLET_KEY = 'netproof.wallet.v1';
-const SETTINGS_KEY = 'netproof.settings.v1';
-const ORIGINS_KEY = 'netproof.origins.v1';
-const PENDING_KEY = 'netproof.pending.v1';
+const WALLET_KEY = STORAGE_KEYS.wallets;
+const SETTINGS_KEY = STORAGE_KEYS.settings;
+const ORIGINS_KEY = STORAGE_KEYS.origins;
+const PENDING_KEY = STORAGE_KEYS.pending;
 
 function storage(): chrome.storage.StorageArea {
   return chrome.storage.local;
@@ -33,32 +33,51 @@ async function write(key: string, value: unknown): Promise<void> {
 }
 
 /**
- * NOTE: one wallet only.
+ * The wallet the user is working in.
  *
- * The web companion is the app in use and now holds a *list* of wallets, each with its own
- * account selection (`apps/companion-web/src/lib/store.ts`). This extension keeps the older
- * single-wallet model, so pairing a second device here replaces the first. Porting it means
- * the same storage split, the same `WalletRecord` shape and the same switcher UI; until
- * that happens, do not treat the two companions as interchangeable.
+ * The area holds a *list* of wallets with an active id, because the UI is now the same code as
+ * the web companion's and supports several. The service worker only ever needs the active one:
+ * a dApp asks for accounts, and the answer is "the wallet in front of the user".
  */
 export async function loadWallet(): Promise<ConnectedWallet | null> {
-  return read<ConnectedWallet>(WALLET_KEY);
-}
-
-export async function saveWallet(wallet: ConnectedWallet): Promise<void> {
-  await write(WALLET_KEY, wallet);
+  const state = await read<{ wallets?: ConnectedWallet[]; activeId?: string | null }>(WALLET_KEY);
+  if (!state || !Array.isArray(state.wallets)) return null;
+  return state.wallets.find((entry) => entry.masterFingerprint === state.activeId) ?? state.wallets[0] ?? null;
 }
 
 export async function clearWallet(): Promise<void> {
   await storage().remove([WALLET_KEY, ORIGINS_KEY, PENDING_KEY]);
 }
 
+interface WalletScoped {
+  accountIndex?: number;
+  addressIndex?: number;
+  visibleAccounts?: number;
+  hiddenAccounts?: string[];
+}
+
 export async function loadSettings(): Promise<CompanionSettings> {
   const stored = await read<Partial<CompanionSettings>>(SETTINGS_KEY);
+  const state = await read<{ wallets?: (WalletScoped & { masterFingerprint: string })[]; activeId?: string | null }>(
+    WALLET_KEY,
+  );
+  // Which account is selected is a property of the wallet, not of the app — the same split
+  // the UI makes. Without this the worker would answer a dApp with the *global* selection,
+  // which is not the one the user is looking at.
+  const active =
+    state?.wallets?.find((entry) => entry.masterFingerprint === state.activeId) ?? state?.wallets?.[0];
   return {
     ...DEFAULT_SETTINGS,
     ...(stored ?? {}),
     rpcUrls: { ...DEFAULT_SETTINGS.rpcUrls, ...(stored?.rpcUrls ?? {}) },
+    ...(active
+      ? {
+          accountIndex: active.accountIndex ?? 0,
+          addressIndex: active.addressIndex ?? 0,
+          visibleAccounts: active.visibleAccounts ?? 1,
+          hiddenAccounts: active.hiddenAccounts ?? [],
+        }
+      : {}),
   };
 }
 

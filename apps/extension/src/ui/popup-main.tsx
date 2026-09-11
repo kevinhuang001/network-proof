@@ -154,15 +154,9 @@ function Popup(): ReactNode {
             <div className="np-hero-amount" style={{ marginTop: 6, fontSize: 26 }}>
               私钥不在浏览器
             </div>
-            <p className="np-body" style={{ color: 'rgba(255,255,255,.66)', marginTop: 8 }}>
-              这里只有 xpub。每一笔签名都要走二维码，由离线手机完成。
-            </p>
           </div>
           <Button block onClick={() => openTab('/connect')}>
-            扫码连接硬件钱包
-          </Button>
-          <Button variant="ghost" onClick={() => openTab('/settings')}>
-            设置 RPC 节点
+            添加钱包
           </Button>
         </div>
       </div>

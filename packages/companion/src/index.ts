@@ -8,6 +8,7 @@
  */
 export * from './types';
 export * from './settings';
+export * from './storage';
 export * from './tokens';
 export * from './accounts';
 export * from './jsonrpc';

@@ -51,7 +51,8 @@ export function accountsOf(entry: WalletRecord, settings: CompanionSettings): Na
   return visibleAccounts(entry, scoped, MAX_ADDRESSES_PER_ACCOUNT).map((account, index) => ({
     ...account,
     ordinal: index + 1,
-    name: settings.accountNames[account.address.toLowerCase()] ?? `账户 ${index + 1}`,
+    // Derivation index, not position: removing an account must not rename the ones below it.
+    name: settings.accountNames[account.address.toLowerCase()] ?? `账户 ${account.index + 1}`,
   }));
 }
 

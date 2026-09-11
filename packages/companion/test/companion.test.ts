@@ -602,3 +602,21 @@ describe('removing an account from the list', () => {
     expect((outcome.result as string[]).length).toBeGreaterThan(0);
   });
 });
+
+describe('account names survive a removal', () => {
+  it('names an account after its derivation index, not its row', () => {
+    const wallet = makeWallet();
+    const settings = { ...DEFAULT_SETTINGS, visibleAccounts: 4 };
+    const names = (hidden: string[]): string[] =>
+      visibleAccounts(wallet, { ...settings, hiddenAccounts: hidden }, MAX_ADDRESSES_PER_ACCOUNT).map(
+        (entry) => `账户 ${entry.index + 1}`,
+      );
+
+    expect(names([])).toEqual(['账户 1', '账户 2', '账户 3', '账户 4']);
+
+    // Remove the second account. The one the user knows as 账户 4 is still 账户 4 — a
+    // positional name would renumber it to 3 the moment the row above it disappeared.
+    const removed = visibleAccounts(wallet, settings, MAX_ADDRESSES_PER_ACCOUNT)[1]!.address;
+    expect(names([removed.toLowerCase()])).toEqual(['账户 1', '账户 3', '账户 4']);
+  });
+});

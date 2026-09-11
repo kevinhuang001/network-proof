@@ -18,7 +18,8 @@
     "jsqr": "1.4.0",
     "qrcode": "1.5.4",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "@netproof/companion-ui": "workspace:*"
   },
   "devDependencies": {
     "@types/chrome": "0.2.9",

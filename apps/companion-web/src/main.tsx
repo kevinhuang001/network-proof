@@ -1,13 +1,10 @@
-import { StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
-import '@netproof/ui/theme.css';
-import { App } from './App';
+import { mountCompanion } from '@netproof/companion-ui';
 
-const container = document.getElementById('root');
-if (!container) throw new Error('#root is missing from index.html');
-
-createRoot(container).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+/**
+ * The web companion.
+ *
+ * Everything the user sees lives in `@netproof/companion-ui`, shared with the Chrome
+ * extension's tab. This file exists only to say "the data goes in `localStorage`", which is
+ * what the default adapter does.
+ */
+mountCompanion();

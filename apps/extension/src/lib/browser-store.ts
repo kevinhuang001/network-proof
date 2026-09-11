@@ -1,0 +1,42 @@
+import { migrateLegacyKeys } from '@netproof/companion';
+import type { KeyValueStore } from '@netproof/companion-ui';
+
+/**
+ * `chrome.storage.local` behind the synchronous interface the wallet UI expects.
+ *
+ * A wallet screen cannot `await` in the middle of a render, and rewriting every screen to be
+ * async would mean the extension and the web app could no longer be the same code — which is
+ * precisely how the extension ended up showing a version of this app that nobody had updated.
+ *
+ * So the whole area is read once at boot (it is a few extended public keys and a settings
+ * object) and kept in a mirror. Writes go to the mirror first, so the UI sees them
+ * immediately, then to `chrome.storage.local`, which is where they have to survive a restart.
+ */
+export async function createChromeStore(): Promise<KeyValueStore> {
+  const area = chrome.storage.local;
+  const raw = await area.get(null);
+
+  // One-time move to the names the shared store uses. Without it, the UI would read an empty
+  // area while the service worker kept reading the old one, and a pending request would never
+  // appear on screen.
+  const { values, changed } = migrateLegacyKeys(raw);
+  if (changed) await area.clear().then(() => area.set(values));
+  const migrated = values;
+
+  const mirror = new Map<string, string>();
+  for (const [key, value] of Object.entries(migrated)) {
+    mirror.set(key, typeof value === 'string' ? value : JSON.stringify(value));
+  }
+
+  return {
+    getItem: (key) => mirror.get(key) ?? null,
+    setItem: (key, value) => {
+      mirror.set(key, value);
+      void area.set({ [key]: value });
+    },
+    removeItem: (key) => {
+      mirror.delete(key);
+      void area.remove(key);
+    },
+  };
+}

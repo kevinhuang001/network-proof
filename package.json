@@ -13,7 +13,7 @@
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm --filter @netproof/hardware build && pnpm --filter @netproof/companion-web build && pnpm --filter @netproof/extension build",
     "build:hardware": "pnpm --filter @netproof/hardware build",
-    "build:companion": "pnpm --filter @netproof/companion-web build",
+    "build:companion": "pnpm --filter @netproof/companion-ui typecheck && pnpm --filter @netproof/companion-web build",
     "build:extension": "pnpm --filter @netproof/extension build",
     "dev:hardware": "pnpm --filter @netproof/hardware dev",
     "dev:companion": "pnpm --filter @netproof/companion-web dev",

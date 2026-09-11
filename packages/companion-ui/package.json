@@ -1,0 +1,40 @@
+{
+  "name": "@netproof/companion-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The companion wallet's interface, shared by the web app and the Chrome extension so the two cannot drift apart.",
+  "exports": {
+    ".": "./src/mount.tsx",
+    "./styles.css": "./src/styles.css"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@netproof/companion": "workspace:*",
+    "@netproof/core": "workspace:*",
+    "@netproof/ui": "workspace:*",
+    "jsqr": "1.4.0",
+    "qrcode": "1.5.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "@noble/hashes": "2.4.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.2.9",
+    "@types/qrcode": "1.5.6",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "5.2.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vitest": "3.2.7",
+    "@types/node": "22.20.2"
+  }
+}

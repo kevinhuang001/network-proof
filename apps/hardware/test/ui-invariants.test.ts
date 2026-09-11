@@ -102,7 +102,7 @@ describe('UI invariants', () => {
     // welcome screen carried a width wrapper, so opening the app at desktop width
     // stretched the wallet to 1200px. Width now comes from the single `.np-app`
     // shell that App() renders around the router.
-    for (const app of ['apps/hardware/src/App.tsx', 'apps/companion-web/src/App.tsx']) {
+    for (const app of ['apps/hardware/src/App.tsx', 'packages/companion-ui/src/App.tsx']) {
       const source = readFileSync(join(repoRoot, app), 'utf8');
       expect(source, `${app} must render the phone-width shell`).toContain('"np-app"');
     }
@@ -206,8 +206,11 @@ describe('UI invariants', () => {
     // Every text field therefore goes through `@netproof/ui/text-field`, which is
     // uncontrolled while focused. Checkboxes are exempt: no keyboard, no composition.
     const offenders: string[] = [];
-    for (const app of ['hardware', 'companion-web']) {
-      for (const file of sourceFiles(join(repoRoot, 'apps', app, 'src'))) {
+    // The companion's screens live in the shared package — the same code the extension runs,
+    // which is the point: one place to check, one place to break.
+    const uiRoots = ['apps/hardware/src', 'packages/companion-ui/src'];
+    for (const root of uiRoots) {
+      for (const file of sourceFiles(join(repoRoot, root))) {
         const source = readFileSync(file, 'utf8');
         for (const match of source.matchAll(/<(input|textarea)\b[\s\S]{0,500}?\/?>/gu)) {
           const tag = match[0]!;
@@ -289,7 +292,12 @@ describe('UI invariants', () => {
     expect(code).not.toMatch(/`/u);
     expect(shim).toMatch(/typeof globalThis !== 'undefined'/u);
 
-    for (const entry of ['apps/hardware/index.html', 'apps/companion-web/index.html']) {
+    for (const entry of [
+      'apps/hardware/index.html',
+      'apps/companion-web/index.html',
+      'apps/extension/popup.html',
+      'apps/extension/tab.html',
+    ]) {
       const html = readFileSync(join(repoRoot, entry), 'utf8');
       const shimAt = html.indexOf('compat.js');
       const bundleAt = html.indexOf('type="module"');
