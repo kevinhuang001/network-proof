@@ -48,6 +48,28 @@ interface PendingResolver {
 
 const resolvers = new Map<string, PendingResolver>();
 
+/**
+ * The last few things this worker decided, and why.
+ *
+ * Debugging "I clicked connect and nothing happened" from the outside is guesswork: the page
+ * console only shows the site's own noise, and this worker runs in a different process with a
+ * console nobody opens. A short ring buffer, readable from the wallet's own settings screen,
+ * turns that into a question with an answer: did the call arrive, and what did we do with it?
+ */
+interface Decision {
+  at: number;
+  method: string;
+  origin: string;
+  outcome: string;
+}
+const decisions: Decision[] = [];
+const DECISION_LIMIT = 40;
+
+function note(method: string, origin: string, outcome: string): void {
+  decisions.unshift({ at: Date.now(), method, origin, outcome });
+  decisions.length = Math.min(decisions.length, DECISION_LIMIT);
+}
+
 void chrome.runtime.onInstalled.addListener(() => {
   // Clear any request left over from a previous session: a pending signature the
   // user walked away from must not be silently resumable.
@@ -96,6 +118,25 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     void loadPending().then((all) => sendResponse({ pending: all }));
     return true;
   }
+  if (candidate?.type === 'diagnostics') {
+    void (async () => {
+      const [pending, wallet, settings, origins] = await Promise.all([
+        loadPending(),
+        loadWallet(),
+        loadSettings(),
+        loadApprovedOrigins(),
+      ]);
+      sendResponse({
+        wallet: wallet?.masterFingerprint ?? null,
+        chainId: settings.chainId,
+        rpcUrl: settings.rpcUrls[settings.chainId] ?? null,
+        approvedOrigins: origins,
+        pending: pending.map((entry) => ({ id: entry.id, method: entry.method, origin: entry.origin })),
+        decisions,
+      });
+    })();
+    return true;
+  }
   return false;
 });
 
@@ -111,6 +152,9 @@ async function route(
   if (!rpcUrl) {
     return { error: { code: ERRORS.unrecognizedChain.code, message: `链 ${settings.chainId} 没有配置 RPC` } };
   }
+
+  if (!wallet) note(method, origin, '还没有配对的钱包');
+  else if (!approvedOrigins.includes(origin)) note(method, origin, '未授权来源');
 
   return handleRpc(method, params, {
     wallet,

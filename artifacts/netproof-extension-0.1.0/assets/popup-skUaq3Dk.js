@@ -1,1 +1,0 @@
-import{c as t,m as a}from"./browser-store-BR5mq4pc.js";(async()=>{const o=await t();a({storage:o,surface:{kind:"popup",openInTab:e=>{chrome.tabs.create({url:chrome.runtime.getURL(`tab.html#${e}`)}),window.close()}}})})();

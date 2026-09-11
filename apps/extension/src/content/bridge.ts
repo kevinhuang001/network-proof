@@ -5,9 +5,10 @@
  *   page --window.postMessage--> bridge --port--> service worker
  *   page <--window.postMessage-- bridge <--port-- service worker
  *
- * It is intentionally dumb: it validates the shape of what it forwards, tags every
- * call with the page origin (which only the isolated world can be trusted to
- * report), and never interprets a method itself.
+ * It is intentionally dumb: it validates the shape of what it forwards, tags every call with
+ * the page origin (which only the isolated world can be trusted to report), and never
+ * interprets a method itself. The port's lifetime — reconnecting after the worker is stopped
+ * or the extension is reloaded — lives in `connection.ts`, where it can be tested.
  */
 
 interface PageRequest {
@@ -18,10 +19,9 @@ interface PageRequest {
 }
 
 import { CHANNEL_EVENT, CHANNEL_INFO, CHANNEL_REQUEST, CHANNEL_RESPONSE } from '../lib/channels';
+import { BridgeConnection } from './connection';
 
-const port = chrome.runtime.connect({ name: 'netproof-provider' });
-
-port.onMessage.addListener((message: unknown) => {
+function toPage(message: unknown): void {
   const data = message as { type?: string; id?: string; result?: unknown; error?: unknown };
   if (data?.type !== 'rpc-result' || !data.id) return;
   window.postMessage(
@@ -32,27 +32,25 @@ port.onMessage.addListener((message: unknown) => {
     },
     window.location.origin,
   );
-});
+}
 
-port.onDisconnect.addListener(() => {
-  // The service worker went away mid-request. Tell the page rather than leaving it
-  // waiting on a promise that can never settle.
-  window.postMessage(
-    {
-      channel: CHANNEL_EVENT,
-      event: 'disconnect',
-      data: { code: 4900, message: '扩展后台已断开，请重试' },
-    },
-    window.location.origin,
-  );
-});
+const connection = new BridgeConnection(
+  () => chrome.runtime.connect({ name: 'netproof-provider' }),
+  toPage,
+  (error) => {
+    window.postMessage(
+      { channel: CHANNEL_EVENT, event: 'disconnect', data: error },
+      window.location.origin,
+    );
+  },
+);
 
 window.addEventListener('message', (event: MessageEvent) => {
   if (event.source !== window) return;
   const data = event.data as PageRequest;
   if (!data || data.channel !== CHANNEL_REQUEST) return;
   if (typeof data.method !== 'string' || typeof data.id !== 'string') return;
-  port.postMessage({
+  connection.send({
     type: 'rpc',
     id: data.id,
     method: data.method,
@@ -61,8 +59,8 @@ window.addEventListener('message', (event: MessageEvent) => {
   });
 });
 
-// Tell the injected provider we are listening, so it (re-)announces itself to the
-// page through EIP-6963.
+// Tell the injected provider we are listening, so it (re-)announces itself to the page through
+// EIP-6963.
 window.postMessage({ channel: CHANNEL_INFO }, window.location.origin);
 window.addEventListener('DOMContentLoaded', () => {
   window.postMessage({ channel: CHANNEL_INFO }, window.location.origin);
