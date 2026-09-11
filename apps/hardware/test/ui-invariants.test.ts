@@ -165,6 +165,37 @@ describe('UI invariants', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('never enables Capacitor input capture', () => {
+    // `captureInput: true` takes the input method out of Chromium's IME pipeline: the
+    // WebView hands the IME a `BaseInputConnection` bound to itself, composed text arrives
+    // as `KeyEvent.ACTION_MULTIPLE`, and Capacitor's own `dispatchKeyEvent` runs
+    // `document.activeElement.value = document.activeElement.value + characters`.
+    //
+    // That is a native, unconditional append into the focused field. Composing `clu` sends
+    // `c`, then `cl`, then `clu`, and the field ends up holding `c` + `cl` + `clu` =
+    // `cclclu` — the bug as reported, APK-only because the web build has no Capacitor.
+    // It exists for hardware keyboard-wedge scanners; this device has none.
+    const config = readFileSync(join(repoRoot, 'apps/hardware/capacitor.config.ts'), 'utf8');
+    // The comments quote the value they are warning about; only real code counts.
+    const code = config.replace(/\/\*[\s\S]*?\*\//gu, '').replace(/^\s*\/\/.*$/gmu, '');
+    expect(code).not.toMatch(/captureInput:\s*true/u);
+    expect(code).toMatch(/captureInput:\s*false/u);
+
+    // And the installed Capacitor really does behave that way — assert the mechanism, so a
+    // future Capacitor upgrade that fixes it upstream shows up here rather than silently
+    // making this comment a lie.
+    const webView = join(
+      repoRoot,
+      'node_modules/.pnpm/@capacitor+android@8.5.1_@capacitor+core@8.5.1/node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/CapacitorWebView.java',
+    );
+    try {
+      const java = readFileSync(webView, 'utf8');
+      expect(java).toContain('document.activeElement.value + ');
+    } catch {
+      // Capacitor is not installed in this checkout; the config assertion above still holds.
+    }
+  });
+
   it('never writes state back into a text field the user is typing in', () => {
     // The reported bug: typing `clu` into the backup quiz produced `cclclu`. The input was
     // controlled, and a phone keyboard does not type — it composes. It puts provisional

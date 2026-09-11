@@ -65,6 +65,44 @@ Play 商店推送的 WebView 更新——WebView 版本停在手机出厂或最�
   最关键的那一屏。`CSS.supports('aspect-ratio', '1 / 1')` 探测，失败时加 `np-no-aspect-ratio`，
   用「高度 0 + `padding-bottom: 100%`」的经典做法顶上。
 
+## Capacitor 的 `captureInput` 会毁掉输入法（已实测的 bug）
+
+`apps/hardware/capacitor.config.ts` 里的 `android.captureInput` **必须保持 `false`**（也是 Capacitor 的默认值）。
+我在模板里把它打开过，直接导致用户在备份验证页输入 `clu` 得到 `cclclu`——而且**只在 APK 里出现，网页版正常**。
+
+机制（`@capacitor/android` 的 `CapacitorWebView.java`）：
+
+```java
+public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
+    if (config.isInputCaptured()) {
+        if (capInputConnection == null) capInputConnection = new BaseInputConnection(this, false);
+        return capInputConnection;      // 绕开 Chromium 自己的 IME 管线
+    }
+    return super.onCreateInputConnection(outAttrs);
+}
+
+public boolean dispatchKeyEvent(KeyEvent event) {
+    if (event.getAction() == KeyEvent.ACTION_MULTIPLE) {
+        evaluateJavascript("document.activeElement.value = document.activeElement.value + '"
+            + event.getCharacters() + "';", null);   // 无条件字符串拼接
+        return false;
+    }
+    ...
+}
+```
+
+打开之后，输入法的组字文本不再走 Chromium 的编辑上下文，而是变成 `KeyEvent.ACTION_MULTIPLE`，
+由上面那行 JS **直接往当前聚焦元素的 `value` 后面拼**。中文键盘组 `clu` 会依次送出 `c`、`cl`、`clu`，
+于是 `c` + `cl` + `clu` = `cclclu`——和用户报的一字不差。
+
+这个开关是给**硬件键盘楔形扫描枪**用的，本设备没有这种输入；摄像头是唯一的输入源。
+`apps/hardware/test/ui-invariants.test.ts` 里有一条测试盯着它（并且顺便断言上游那段拼接代码仍然存在，
+以后升级 Capacitor 真修掉了，测试会提醒我们去更新说明，而不是让注释变成假话）。
+
+> 顺带说明：这个 bug 曾经被误判为"受控输入框被 React 写回、打断组字"。
+> 那次改动（`@netproof/ui/text-field`，聚焦时非受控）在网页环境是正确且值得保留的，
+> 但它**不是**这个现象的原因——真正的原因在原生层，React 根本没参与。
+
 ## 已知不可修的东西
 
 - **`100dvh`**（108）：已经同时写了 `100vh`，老引擎用前者。

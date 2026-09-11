@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@netproof/ui/theme.css';
 import { TextField } from '@netproof/ui/text-field';
+import { MnemonicQuiz } from '../src/components/Mnemonic';
 
 const WORDS = [
   'abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract',
@@ -60,7 +61,16 @@ function Harness(): ReactNode {
         <label className="np-label" htmlFor="plain">plain uncontrolled (baseline)</label>
         <input id="plain" className="np-input" defaultValue="" />
         <div id="values" className="np-mono" />
-        <div id="words">{WORDS.length}</div>
+
+        <h2 className="np-headline">the reported screen</h2>
+        <MnemonicQuiz
+          words={WORDS}
+          positions={[0, 7, 23]}
+          onPassed={() => {
+            document.getElementById('quiz-result')!.textContent = 'passed';
+          }}
+        />
+        <div id="quiz-result" className="np-mono" />
       </div>
     </div>
   );
