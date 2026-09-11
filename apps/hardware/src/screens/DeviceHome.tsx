@@ -83,11 +83,14 @@ export function DeviceHomeScreen({
             <div className="np-hero-amount" style={{ marginTop: 8, fontSize: 24 }}>
               {entry.label}
             </div>
+            {/*
+              Just the wallet. The card used to add "24 词 · 摄像头熵" (or 导入) underneath —
+              how the wallet was created is a fact about the past, and the hero is there to
+              be recognised and tapped. The word count stays: it is what the user wrote on
+              paper, and a mismatch is worth seeing without opening anything.
+            */}
             <div className="np-row" style={{ marginTop: 10, gap: 12 }}>
               <span className="np-body np-body--tight">{entry.words} 词</span>
-              <span className="np-body np-body--tight">
-                {entry.provenance.source === 'imported-mnemonic' ? '导入' : '摄像头熵'}
-              </span>
             </div>
           </button>
         ))}
@@ -286,10 +289,7 @@ export function WalletsScreen({
                       <div className="np-subtitle">{entry.label}</div>
                     </button>
                   )}
-                  <div className="np-body np-body--tight">
-                    {entry.words} 词 ·{' '}
-                    {entry.provenance.source === 'imported-mnemonic' ? '导入' : '摄像头熵'}
-                  </div>
+                  <div className="np-body np-body--tight">{entry.words} 词</div>
                 </div>
                 <button
                   type="button"

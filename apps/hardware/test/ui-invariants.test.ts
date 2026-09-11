@@ -252,7 +252,13 @@ describe('UI invariants', () => {
     // checks to confirm which chain they are signing on. The map and the files are
     // separate artifacts, so they are checked against each other here.
     const networks = readFileSync(join(repoRoot, 'packages/ui/src/networks.ts'), 'utf8');
-    const logos = [...networks.matchAll(/logo: '([^']+)'/gu)].map((match) => match[1]!);
+    // Chain logos are `logo: 'file.png'`; token marks are keyed by ticker in a plain map, so
+    // both shapes are collected — a missing usdt.png is as visible to the user as a missing
+    // chain logo, and just as easy to leave behind.
+    const logos = [
+      ...[...networks.matchAll(/logo: '([^']+)'/gu)].map((match) => match[1]!),
+      ...[...networks.matchAll(/^\s{2}[A-Z0-9]+: '([^']+\.png)',/gmu)].map((match) => match[1]!),
+    ];
     expect(logos.length).toBeGreaterThan(4);
 
     const missing: string[] = [];

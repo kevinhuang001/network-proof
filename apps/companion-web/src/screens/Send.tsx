@@ -183,7 +183,12 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
 
   return (
     <>
-      <Header title="发送" onBack={() => navigate({ name: 'home' })} />
+      {/* Back to the asset this was opened from: send is reached from a token screen, and
+          returning home loses the context the user just spent a tap building. */}
+      <Header
+        title="发送"
+        onBack={() => navigate({ name: 'asset', asset: tokenAddress ?? 'native' })}
+      />
       <div className="np-main">
 
       <div className="np-card">

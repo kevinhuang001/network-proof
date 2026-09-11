@@ -75,12 +75,12 @@ import { SettingsScreen } from './screens/Settings';
 export type Route =
   | { name: 'home' }
   | { name: 'connect' }
-  /** One asset, and the screen where its send and receive buttons live. */
-  | { name: 'asset'; asset: string; symbol: string; label: string }
+  /** One asset — 'native' or a token address. */
+  | { name: 'asset'; asset: string }
   | { name: 'activity' }
   | { name: 'addresses' }
   | { name: 'send'; token?: string }
-  | { name: 'receive' }
+  | { name: 'receive'; token?: string }
   | { name: 'add-token' }
   | { name: 'sign'; id: string }
   | { name: 'settings' };
@@ -131,12 +131,12 @@ function parseRoute(hash: string): Route {
   if (path.startsWith('/activity')) return { name: 'activity' };
   if (path.startsWith('/addresses')) return { name: 'addresses' };
   if (path.startsWith('/asset/')) {
-    const [asset = 'native', symbol = '', label = ''] = path.slice('/asset/'.length).split('|');
-    return { name: 'asset', asset, symbol, label };
+    return { name: 'asset', asset: path.slice('/asset/'.length) || 'native' };
   }
   // `/send/<token address>` opens the send form already pointed at that token.
   if (path.startsWith('/send/')) return { name: 'send', token: path.slice('/send/'.length) };
   if (path.startsWith('/send')) return { name: 'send' };
+  if (path.startsWith('/receive/')) return { name: 'receive', token: path.slice('/receive/'.length) };
   if (path.startsWith('/receive')) return { name: 'receive' };
   if (path.startsWith('/add-token')) return { name: 'add-token' };
   if (path.startsWith('/sign/')) return { name: 'sign', id: path.slice('/sign/'.length) };
@@ -215,9 +215,11 @@ function CompanionProvider({ children }: { children: ReactNode }): ReactNode {
       next.name === 'sign'
         ? `#/sign/${next.id}`
         : next.name === 'asset'
-          ? `#/asset/${next.asset}|${next.symbol}|${next.label}`
+          ? `#/asset/${next.asset}`
           : next.name === 'send' && next.token
             ? `#/send/${next.token}`
+            : next.name === 'receive' && next.token
+              ? `#/receive/${next.token}`
             : next.name === 'home'
               ? '#/'
               : `#/${next.name}`;
@@ -455,13 +457,13 @@ function Shell(): ReactNode {
       {route.name === 'connect' ? <ConnectScreen /> : null}
       {route.name === 'activity' ? <ActivityScreen /> : null}
       {route.name === 'addresses' ? <AddressesScreen /> : null}
-      {route.name === 'asset' ? (
-        <AssetScreen asset={route.asset} symbol={route.symbol} label={route.label} />
-      ) : null}
+      {route.name === 'asset' ? <AssetScreen asset={route.asset} /> : null}
       {route.name === 'send' ? (
         <SendScreen {...(route.token !== undefined ? { token: route.token } : {})} />
       ) : null}
-      {route.name === 'receive' ? <ReceiveScreen /> : null}
+      {route.name === 'receive' ? (
+        <ReceiveScreen {...(route.token !== undefined ? { token: route.token } : {})} />
+      ) : null}
       {route.name === 'add-token' ? <AddTokenScreen /> : null}
       {route.name === 'sign' ? <SignScreen id={route.id} /> : null}
       {route.name === 'settings' ? <SettingsScreen /> : null}

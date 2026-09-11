@@ -61,3 +61,22 @@ export function networkLogoUrl(chainId: number): string | null {
 
 /** The EVM chains, in display order — what a single device export covers. */
 export const EVM_NETWORKS: readonly NetworkInfo[] = NETWORKS.filter((n) => n.family === 'evm');
+
+/**
+ * Token marks, by ticker.
+ *
+ * Keyed by symbol rather than by contract address: the same stablecoin is a different
+ * contract on every chain, and a wallet that looked up its icon by address would show a
+ * blank chip on eight chains out of nine. These are shipped files, not a fetch — the same
+ * privacy property as the chain logos next to them.
+ */
+const TOKEN_LOGOS: Record<string, string> = {
+  USDT: 'usdt.png',
+  USDC: 'usdc.png',
+};
+
+/** Logo for a token ticker, or null when there is none and the caller should show a chip. */
+export function tokenLogoUrl(symbol: string): string | null {
+  const file = TOKEN_LOGOS[symbol.toUpperCase()];
+  return file ? `./logos/${file}` : null;
+}

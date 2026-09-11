@@ -19,6 +19,8 @@ that is already wrong about something visible.
 | `base.png` | Base | 8453 |
 | `solana.png` | Solana | 501 |
 | `sepolia.png` | Sepolia (testnet) | 11155111 |
+| `usdt.png` | Tether USD (token mark) | — |
+| `usdc.png` | USD Coin (token mark) | — |
 
 Upstream files are 192×192; these are re-encoded to 96×96 (displayed at 22–40px) to keep
 the app bundle small. Fetch command, for reproducibility:
@@ -26,6 +28,15 @@ the app bundle small. Fetch command, for reproducibility:
 ```sh
 curl -sS -o ethereum.png \
   https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png
+```
+
+The two token marks are keyed by *ticker*, not by contract address: USDT and USDC are
+different contracts on every chain, and looking an icon up by address would leave the chip
+blank on most of them. Source files:
+
+```
+blockchains/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png   → usdt.png
+blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png   → usdc.png
 ```
 
 ## Copying

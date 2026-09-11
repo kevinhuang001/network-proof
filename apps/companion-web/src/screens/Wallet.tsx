@@ -30,6 +30,7 @@ import {
   shortAddress,
 } from '../ui/kit';
 import { ChainLogo } from '../ui/icons';
+import { tokenLogoUrl } from '@netproof/ui/networks';
 
 /**
  * Wallet-shaped screens.
@@ -76,89 +77,108 @@ export function useVisibleAccounts(): { accounts: WalletAccount[] } {
 }
 
 /**
- * Per-account balances for the native coin *and* every token the user added.
+ * Balances for the native coin and every token the wallet shows.
  *
- * Token balances are read straight from each contract, so the list needs no curated
- * token registry and no price API — nothing but the RPC the user already runs. The
- * cost is that the wallet shows amounts, not fiat values; inventing a dollar figure
- * would mean sending the user's holdings to somebody's price feed.
+ * Two properties this has to have, and the first one was missing:
+ *
+ *  1. **The list is known before the network is.** Which tokens exist is decided locally —
+ *     the seeded stablecoins plus whatever the user added — so the rows render on the first
+ *     paint and the amounts fill in as they arrive. Waiting for every contract call before
+ *     showing anything meant a blank asset list for seconds after a refresh, and an asset
+ *     list that appears only sometimes reads as a wallet with nothing in it.
+ *  2. **Reads run in parallel.** They used to be one `await` after another across every
+ *     account and every token; on five accounts that was fifteen sequential round trips to
+ *     the user's own node before a single number appeared.
+ *
+ * Amounts are per account, because a dApp-facing list can expose many addresses and the user
+ * still needs to know which one holds what.
  */
 export function usePortfolio(): {
   native: Record<string, string>;
-  tokens: { info: TokenInfo; perAccount: Record<string, string>; total: string }[];
+  tokens: { info: TokenInfo; perAccount: Record<string, string> }[];
   reload: () => void;
   error: string | null;
 } {
   const { settings } = useCompanion();
   const { accounts } = useVisibleAccounts();
   const [native, setNative] = useState<Record<string, string>>({});
-  const [tokens, setTokens] = useState<{ info: TokenInfo; perAccount: Record<string, string>; total: string }[]>([]);
+  const [amounts, setAmounts] = useState<Record<string, Record<string, string>>>({});
   const [error, setError] = useState<string | null>(null);
-  const [tokenVersion, setTokenVersion] = useState(0);
   const [localToken, setLocalToken] = useState(0);
   const key = accounts.map((entry) => entry.address).join(',');
 
-  // Re-read the stored token list whenever the chain changes or the user edits it.
-  useEffect(() => {
-    const unsubscribe = () => undefined;
-    void tokenVersion;
-    setTokenVersion((value) => value);
-    return unsubscribe;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Seeds plus stored tokens, read synchronously: no await, no empty first frame.
+  const list = useMemo(() => tokensForChain(settings.chainId), [settings.chainId, localToken]);
+
+  const tokens = useMemo(
+    () =>
+      list.map((entry) => {
+        const perAccount = amounts[entry.address.toLowerCase()] ?? {};
+        return {
+          info: { ...entry, native: false } as TokenInfo,
+          perAccount,
+        };
+      }),
+    [list, amounts],
+  );
 
   useEffect(() => {
     const rpcUrl = settings.rpcUrls[settings.chainId];
     const chain = chainMeta(settings.chainId);
     if (!rpcUrl || !chain || key.length === 0) return;
     let cancelled = false;
-    void (async () => {
-      const call: CallFn = (method, params) =>
-        forwardToNode(method, params, { rpcUrl, chainId: settings.chainId });
-      const nextNative: Record<string, string> = {};
-      let failure: string | null = null;
-      for (const account of accounts) {
-        try {
-          nextNative[account.address] = formatEth(
-            await fetchBalance(account.address, { rpcUrl, chainId: settings.chainId }),
-          );
-        } catch (caught) {
-          nextNative[account.address] = '—';
-          failure = `无法读取余额：${(caught as Error).message}`;
-        }
-      }
 
-      const nextTokens: typeof tokens = [];
-      for (const stored of tokensForChain(settings.chainId)) {
-        const info: TokenInfo = { ...stored, native: false };
-        const perAccount: Record<string, string> = {};
-        let sum = 0n;
-        for (const account of accounts) {
+    const call: CallFn = (method, params) =>
+      forwardToNode(method, params, { rpcUrl, chainId: settings.chainId });
+
+    // Native balance for every account, then one read per token per account — all in flight
+    // together, and each result applied as it lands.
+    void Promise.all(
+      accounts.map(async (account) => {
+        try {
+          const raw = await fetchBalance(account.address, { rpcUrl, chainId: settings.chainId });
+          if (!cancelled) setNative((previous) => ({ ...previous, [account.address]: formatEth(raw) }));
+        } catch (caught) {
+          if (cancelled) return;
+          setNative((previous) => ({ ...previous, [account.address]: '—' }));
+          setError(`无法读取余额：${(caught as Error).message}`);
+        }
+      }),
+    );
+
+    for (const [index, entry] of list.entries()) {
+      const info: TokenInfo = { ...entry, native: false };
+      const slot = entry.address.toLowerCase();
+      // Show the row with an empty amount immediately; fill it in per account.
+      if (!cancelled && index < list.length) {
+        setAmounts((previous) => (previous[slot] ? previous : { ...previous, [slot]: {} }));
+      }
+      void Promise.all(
+        accounts.map(async (account) => {
           try {
             const raw = await fetchTokenBalance(info, account.address, call);
-            perAccount[account.address] = formatTokenAmount(raw, info.decimals);
-            sum += raw;
+            const formatted = formatTokenAmount(raw, info.decimals);
+            if (cancelled) return;
+            setAmounts((previous) => ({
+              ...previous,
+              [slot]: { ...(previous[slot] ?? {}), [account.address]: formatted },
+            }));
           } catch {
-            perAccount[account.address] = '—';
+            if (cancelled) return;
+            setAmounts((previous) => ({
+              ...previous,
+              [slot]: { ...(previous[slot] ?? {}), [account.address]: '—' },
+            }));
           }
-        }
-        nextTokens.push({
-          info,
-          perAccount,
-          total: formatTokenAmount(sum, info.decimals),
-        });
-      }
+        }),
+      );
+    }
 
-      if (cancelled) return;
-      setNative(nextNative);
-      setTokens(nextTokens);
-      setError(failure);
-    })();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, settings.chainId, settings.rpcUrls, localToken, tokenVersion]);
+  }, [key, settings.chainId, settings.rpcUrls, localToken]);
 
   return { native, tokens, reload: () => setLocalToken((value) => value + 1), error };
 }
@@ -241,9 +261,7 @@ export function HomeScreen(): ReactNode {
             type="button"
             className="np-list__item"
             key={asset.key}
-            onClick={() =>
-              navigate({ name: 'asset', asset: asset.key, symbol: asset.symbol, label: asset.name })
-            }
+            onClick={() => navigate({ name: 'asset', asset: asset.key })}
           >
             <AssetBadge symbol={asset.symbol} chainId={settings.chainId} native={asset.key === 'native'} />
             <div className="np-grow" style={{ minWidth: 0 }}>
@@ -260,12 +278,30 @@ export function HomeScreen(): ReactNode {
         ))}
       </div>
 
+      {/*
+        Solana lists one asset and no way to add more, which looks like a bug unless it is
+        said out loud: SPL tokens are not supported, and every EVM chain seeds USDT/USDC
+        instead. This line is the whole difference.
+      */}
+      {solana ? (
+        <div className="np-body np-body--tight np-center">
+          Solana 只显示原生 SOL，SPL 代币尚未支持
+        </div>
+      ) : null}
+
       {error ? <Alert tone="warn">{error}</Alert> : null}
     </div>
   );
 }
 
-/** Round asset mark: the chain's logo for the native coin, a symbol chip for a token. */
+/**
+ * Round asset mark: the chain's real logo for the native coin, the stablecoin's own mark for
+ * USDT/USDC, and a ticker chip for anything else.
+ *
+ * A text chip is a placeholder, and it looked like one next to the real chain logos — the row
+ * for a dollar stablecoin showed a grey circle reading "USDT" while the row above it showed
+ * Ethereum's actual mark.
+ */
 function AssetBadge({
   symbol,
   chainId,
@@ -276,6 +312,20 @@ function AssetBadge({
   native: boolean;
 }): ReactNode {
   if (native) return <ChainLogo chainId={chainId} size={38} />;
+
+  const tokenLogo = tokenLogoUrl(symbol);
+  if (tokenLogo) {
+    return (
+      <img
+        src={tokenLogo}
+        width={38}
+        height={38}
+        alt=""
+        style={{ width: 38, height: 38, minWidth: 38, display: 'block', borderRadius: 999 }}
+      />
+    );
+  }
+
   return (
     <span
       style={{
@@ -350,22 +400,21 @@ export function ActivityScreen(): ReactNode {
 // One asset: where send and receive actually live
 // ---------------------------------------------------------------------------
 
-export function AssetScreen({
-  asset,
-  symbol,
-  label,
-}: {
-  asset: string;
-  /** Short ticker, and what the header shows. */
-  symbol: string;
-  /** Long name, e.g. "Ethereum Mainnet" or the token's name. */
-  label: string;
-}): ReactNode {
+export function AssetScreen({ asset }: { asset: string }): ReactNode {
   const { settings, navigate, wallet } = useCompanion();
   const { accounts } = useVisibleAccounts();
   const { native, tokens } = usePortfolio();
   const current = accounts[settings.addressIndex] ?? accounts[0];
-  const token = asset === 'native' ? null : tokens.find((entry) => entry.info.address.toLowerCase() === asset.toLowerCase());
+  const chain = chainMeta(settings.chainId);
+
+  // The asset key is all the route carries; the labels come from the chain or the token list.
+  // Putting them in the URL meant 发送 and 接收 could not know where the user had come from.
+  const token =
+    asset === 'native'
+      ? null
+      : tokens.find((entry) => entry.info.address.toLowerCase() === asset.toLowerCase());
+  const symbol = asset === 'native' ? chain?.symbol ?? 'ETH' : token?.info.symbol ?? '代币';
+  const label = asset === 'native' ? chain?.name ?? '' : token?.info.name ?? '';
   const amount =
     asset === 'native'
       ? current
@@ -377,17 +426,19 @@ export function AssetScreen({
 
   return (
     <>
-      <Header title={symbol} subtitle={label} onBack={() => navigate({ name: 'home' })} />
+      {/* No subtitle: the ticker is the identity, and "Tether USD" underneath it was a second
+          line saying what the first line already said. */}
+      <Header title={symbol} onBack={() => navigate({ name: 'home' })} />
       <div className="np-main">
         <div className="np-card">
           <div className="np-label">余额</div>
           <div className="np-hero-amount" style={{ fontSize: 32, marginTop: 6 }}>
-            {amount}{' '}
-            <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.55 }}>{symbol}</span>
+            {amount} <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.55 }}>{symbol}</span>
           </div>
           <KeyValue label="账户" value={current?.name ?? '—'} />
           <KeyValue label="地址" value={current ? shortAddress(current.address, 10, 8) : '—'} mono />
           {token ? <KeyValue label="合约" value={shortAddress(token.info.address, 10, 8)} mono /> : null}
+          {label.length > 0 && label !== symbol ? <KeyValue label="名称" value={label} /> : null}
           {asset !== 'native' && !token ? (
             <Alert tone="warn">这个代币不在本机列表里，可能是通过链接直接打开的。</Alert>
           ) : null}
@@ -395,14 +446,17 @@ export function AssetScreen({
 
         <div className="np-grid-2">
           <Button
-            onClick={() =>
-              navigate({ name: 'send', ...(asset === 'native' ? {} : { token: asset }) })
-            }
+            onClick={() => navigate({ name: 'send', ...(asset === 'native' ? {} : { token: asset }) })}
             disabled={asset === 'native' ? !wallet : !token}
           >
             发送
           </Button>
-          <Button variant="secondary" onClick={() => navigate({ name: 'receive' })}>
+          <Button
+            variant="secondary"
+            onClick={() =>
+              navigate({ name: 'receive', ...(asset === 'native' ? {} : { token: asset }) })
+            }
+          >
             接收
           </Button>
         </div>
@@ -415,16 +469,19 @@ export function AssetScreen({
 // Receive
 // ---------------------------------------------------------------------------
 
-export function ReceiveScreen(): ReactNode {
+export function ReceiveScreen({ token }: { token?: string } = {}): ReactNode {
   const { settings, navigate } = useCompanion();
   const { accounts } = useVisibleAccounts();
   const current = accounts[settings.addressIndex] ?? accounts[0];
+  // Back to the asset this was opened from, so 接收 → back does not dump the user on the
+  // home screen having forgotten which token they were looking at.
+  const back = () => navigate({ name: 'asset', asset: token ?? 'native' });
 
   if (!current) return null;
 
   return (
     <>
-      <Header title="接收" subtitle={current.name} onBack={() => navigate({ name: 'home' })} />
+      <Header title="接收" subtitle={current.name} onBack={back} />
       <div className="np-main">
       <AddressQr value={current.address} />
 
