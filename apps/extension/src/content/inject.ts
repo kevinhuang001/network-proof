@@ -93,7 +93,12 @@ class NetProofProvider {
     if (args.method === 'eth_requestAccounts' || args.method === 'eth_accounts') {
       const next = Array.isArray(result) ? (result as string[]) : [];
       if (next.join(',') !== this.accounts.join(',')) {
+        const first = this.accounts.length === 0;
         this.accounts = next;
+        // EIP-1193: `connect` is emitted when the provider first becomes connected, and some
+        // connectors wait for it rather than for the promise. Emitting it only on the first
+        // transition keeps it meaning "connected", not "accounts changed".
+        if (first && next.length > 0) this.emit('connect', { chainId: this.chainId });
         this.emit('accountsChanged', next);
       }
     }
