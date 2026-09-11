@@ -328,16 +328,26 @@ body {
   border-color: transparent;
 }
 
+/*
+ * Hero card.
+ *
+ * The ink is a variable rather than a fixed white, because the device gives each wallet
+ * hero its own colour — light, one per wallet — and a light card with white text on it is
+ * an unreadable card. A card sets `--np-hero-ink` and `--np-hero-ink-soft` inline; the
+ * default stays white-on-dark for the companion's balance card.
+ */
 .np-card--hero {
+  --np-hero-ink: var(--np-ink-inverse);
+  --np-hero-ink-soft: rgba(255, 255, 255, 0.66);
   background: var(--np-bg-inverse);
-  color: var(--np-ink-inverse);
+  color: var(--np-hero-ink);
   border-color: transparent;
   padding: 22px;
 }
 
 .np-card--hero .np-label,
 .np-card--hero .np-body {
-  color: rgba(255, 255, 255, 0.66);
+  color: var(--np-hero-ink-soft);
 }
 
 .np-hero-amount {
@@ -345,7 +355,7 @@ body {
   font-weight: 800;
   letter-spacing: -0.035em;
   font-variant-numeric: tabular-nums;
-  color: #ffffff;
+  color: var(--np-hero-ink, #ffffff);
 }
 
 .np-list {

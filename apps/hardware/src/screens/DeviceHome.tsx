@@ -12,6 +12,7 @@ import { ROBUST_FALLBACK_MS } from '../lib/qrPresets';
 import { useRobustQrFallback } from '../lib/useRobustQrFallback';
 import { Alert, Button, Header, haptic } from '../components/primitives';
 import { DeviceMenu } from '../components/DeviceMenu';
+import { heroColors } from '../components/heroColor';
 import { TextField } from '@netproof/ui/text-field';
 import { QrDisplay } from '../components/QrDisplay';
 import {
@@ -46,6 +47,9 @@ export function DeviceHomeScreen({
   onLock: () => void;
 }): ReactNode {
   const { wallets, selectWallet } = useSession();
+  // Colours are assigned from the whole set at once: "different" is a property of the set,
+  // and hashing each wallet on its own is how two cards end up identical.
+  const colors = useMemo(() => heroColors(wallets.map((entry) => entry.id)), [wallets]);
 
   return (
     <>
@@ -56,7 +60,15 @@ export function DeviceHomeScreen({
             key={entry.id}
             type="button"
             className="np-card np-card--hero"
-            style={{ ...CARD_BUTTON, border: 0 }}
+            style={{
+              ...CARD_BUTTON,
+              border: 0,
+              background: colors[entry.id]?.background,
+              boxShadow: colors[entry.id]?.shadow,
+              // The card's ink travels with its colour; see `heroColor.ts`.
+              ['--np-hero-ink' as string]: colors[entry.id]?.ink,
+              ['--np-hero-ink-soft' as string]: colors[entry.id]?.inkSoft,
+            }}
             onClick={() => {
               haptic(12);
               selectWallet(entry.id);
@@ -71,10 +83,8 @@ export function DeviceHomeScreen({
               {entry.label}
             </div>
             <div className="np-row" style={{ marginTop: 10, gap: 12 }}>
-              <span className="np-body np-body--tight" style={{ color: 'rgba(255,255,255,.6)' }}>
-                {entry.words} 词
-              </span>
-              <span className="np-body np-body--tight" style={{ color: 'rgba(255,255,255,.6)' }}>
+              <span className="np-body np-body--tight">{entry.words} 词</span>
+              <span className="np-body np-body--tight">
                 {entry.provenance.source === 'imported-mnemonic' ? '导入' : '摄像头熵'}
               </span>
             </div>
@@ -82,7 +92,7 @@ export function DeviceHomeScreen({
         ))}
 
         <Button variant="secondary" block onClick={onManage}>
-          管理钱包（新建 / 导入 / 删除）
+          管理钱包
         </Button>
       </div>
     </>
@@ -105,7 +115,7 @@ export function WalletHomeScreen({
   onSettings: () => void;
   onLock: () => void;
 }): ReactNode {
-  const { wallets, wallet, passphrase, passphraseRequired } = useSession();
+  const { wallets, passphrase, passphraseRequired } = useSession();
   const entry = wallets.find((candidate) => candidate.id === walletId);
 
   return (
@@ -133,12 +143,6 @@ export function WalletHomeScreen({
           hint="扫请求 → 本机确认 → 显示签名"
           onClick={onSign}
         />
-
-        <div className="np-row" style={{ gap: 8, justifyContent: 'center', opacity: 0.55 }}>
-          <span className="np-mono" style={{ fontSize: 11 }}>
-            {wallet?.masterFingerprint ?? ''}
-          </span>
-        </div>
       </div>
     </>
   );
@@ -215,6 +219,8 @@ export function WalletsScreen({
   onBack: () => void;
 }): ReactNode {
   const { wallets, activeWallet, selectWallet, deleteWallet, renameWallet } = useSession();
+  // Same colours as the hero cards, so a wallet is recognisable in both places.
+  const colors = useMemo(() => heroColors(wallets.map((entry) => entry.id)), [wallets]);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -222,7 +228,7 @@ export function WalletsScreen({
 
   return (
     <>
-      <Header title="钱包" subtitle={`${wallets.length} 个 · 共用一个设备密码`} onBack={onBack} />
+      <Header title="钱包" onBack={onBack} />
       <div className="np-main">
         <div className="np-list">
           {wallets.map((entry) => {
@@ -233,9 +239,10 @@ export function WalletsScreen({
                   type="button"
                   className="np-icon-btn"
                   style={{
-                    background: active ? 'var(--np-ink)' : 'var(--np-bg-sunken)',
-                    color: active ? '#fff' : 'var(--np-ink-3)',
+                    background: colors[entry.id]?.background ?? 'var(--np-bg-sunken)',
+                    color: colors[entry.id]?.ink ?? 'var(--np-ink)',
                     border: 0,
+                    boxShadow: active ? 'inset 0 0 0 2px var(--np-ink)' : 'none',
                   }}
                   onClick={() => selectWallet(entry.id)}
                   aria-label={active ? '当前钱包' : '切换到该钱包'}
@@ -314,7 +321,6 @@ export function WalletsScreen({
                 删除「{wallets.find((entry) => entry.id === confirming)?.label}」？
               </div>
               <div className="np-body np-body--tight">
-                只删除本机记录。只要还留着助记词，之后可以重新导入；
                 <span className="np-ink">没有备份的助记词删掉就永久失去了。</span>
               </div>
               <Button
@@ -338,11 +344,6 @@ export function WalletsScreen({
             </div>
           </div>
         ) : null}
-
-        <div className="np-row" style={{ gap: 8, alignItems: 'center', opacity: 0.7 }}>
-          <ShieldIcon size={16} />
-          <span className="np-body np-body--tight">全部钱包在同一个加密文件里，共用一个密码</span>
-        </div>
       </div>
     </>
   );

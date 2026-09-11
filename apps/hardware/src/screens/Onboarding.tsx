@@ -103,7 +103,7 @@ export function BackupScreen({
               抄在纸上
             </h2>
             <Alert tone="danger" title="不要截图、不要拍照、不要联网">
-              这是你资产的唯一凭证。任何拿到这串单词的人都能转走全部资金。设备不会上传，也不会有第二份。
+              拿到这串单词的人可以转走全部资金。
             </Alert>
             <MnemonicGrid words={words} hidden={!revealed} onReveal={() => setRevealed(true)} />
           </>
@@ -143,8 +143,7 @@ export function PassphraseScreen({
       <div className="np-main">
         <h2 className="np-headline">可选的第 25 个词</h2>
         <p className="np-body">
-          Passphrase 会与助记词一起推导出<span className="np-ink">完全不同的钱包</span>。它保护的是"助记词被看到"
-          的场景：只拿到 24 个词的人，没有 passphrase 也打不开你的资产。
+          加上 passphrase 会推导出<span className="np-ink">另一个钱包</span>。只拿到助记词的人打不开它。
         </p>
 
         <div className="np-card">

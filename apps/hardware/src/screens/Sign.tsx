@@ -117,13 +117,7 @@ export function ScanRequestScreen({
         {!started ? (
           <>
             <h2 className="np-headline">扫描插件钱包的二维码</h2>
-            <p className="np-body">
-              在插件钱包里发起交易或签名请求，它会显示一个二维码。用这台离线设备扫描它，
-              请求内容只会停留在本机，不会经过任何网络。
-            </p>
-            <Alert tone="info" title="断网确认">
-              这台设备应始终处于飞行模式。签名不需要网络，联网只会增加风险。
-            </Alert>
+            <p className="np-body">在插件钱包里发起请求，扫它显示的二维码。</p>
           </>
         ) : (
           <CameraStage

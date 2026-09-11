@@ -134,10 +134,9 @@ function PhraseStep({
     <>
       <Header title="导入已有钱包" subtitle="第 1 / 3 步" onBack={onBack} />
       <div className="np-main">
-        <Alert tone="warn" title="先想清楚：这串助记词安全吗？">
-          如果它曾经出现在联网设备上（手机备忘录、截图、网盘、聊天记录、任何网页钱包），
-          它就应该被视为<span className="np-ink">已经泄露</span>。导入到这台离线设备不会让它重新变安全——
-          这个程序无法替你判断，也不会阻止你，但它必须说清楚。
+        <Alert tone="warn" title="这串助记词上过网吗？">
+          出现在截图、备忘录、网盘或任何网页钱包里，就该视为<span className="np-ink">已经泄露</span>。
+          导进这台离线设备也不能让它重新变安全。
         </Alert>
 
         <div className="np-field">
@@ -162,9 +161,6 @@ function PhraseStep({
             rows={4}
             onChange={setText}
           />
-          <div className="np-body np-body--tight">
-            注意周围是否有人能看到屏幕。输入内容不会被保存，只用于推导这一次的钱包。
-          </div>
         </div>
 
         {inspection.wordCount > 0 ? (
@@ -189,7 +185,7 @@ function PhraseStep({
               })}
             </div>
             <div className="np-body np-body--tight" style={{ marginTop: 10 }}>
-              请核对以上单词与你纸上备份逐字一致。红框表示该词不在 BIP39 词表中。
+              红框表示该词不在 BIP39 词表中。
             </div>
           </div>
         ) : null}
@@ -246,11 +242,6 @@ function PhraseStep({
             余额为零的新钱包。
           </div>
         </div>
-
-        <Alert tone="info" title="校验位不能证明这是你的助记词">
-          两张单词顺序对调，仍有可能通过校验位。所以下一步会让你核对派生出的钱包指纹与第一个地址，
-          请与原钱包逐位比对。
-        </Alert>
       </div>
       <div className="np-footer">
         <Button

@@ -186,6 +186,8 @@ describe('UI invariants', () => {
         }
       }
     }
+    // Only `src/` is scanned, which keeps the reproduction harness in `dev/` out of it:
+    // that file deliberately contains the broken input, to compare against this fix.
     expect(offenders).toEqual([]);
 
     // And the shared component has to stay uncontrolled: a `value` prop here would
