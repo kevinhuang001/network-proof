@@ -1,10 +1,10 @@
-import { StrictMode, useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
+import { Component, StrictMode, useEffect, useState } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@netproof/ui/theme.css';
 import { fetchBalance } from '@netproof/companion';
 import { loadApprovedOrigins, loadSettings, loadWallet, primaryAccount, resolveAccounts } from '../lib/store';
-import { Badge, Button, Header, KeyValue, Spinner, shortAddress } from './kit';
+import { Alert, Badge, Button, Header, KeyValue, Spinner, shortAddress } from './kit';
 
 /**
  * The popup.
@@ -17,6 +17,46 @@ import { Badge, Button, Header, KeyValue, Spinner, shortAddress } from './kit';
 
 const TAB_URL = 'tab.html';
 
+/**
+ * A popup must always say something.
+ *
+ * If a render throws, React unmounts the tree and the popup is left as an empty document —
+ * which an action popup sizes to almost nothing, so the user sees a sliver of window and no
+ * clue that anything went wrong. This turns that into a sentence and a way out.
+ */
+class PopupBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): { error: Error } {
+    return { error };
+  }
+
+  override componentDidCatch(error: Error, info: ErrorInfo): void {
+    // Console only: the popup has nowhere else to report, and this is a developer surface.
+    console.error('popup render failed', error, info.componentStack);
+  }
+
+  override render(): ReactNode {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="np-app" style={{ minHeight: 420 }}>
+        <Header title="NetProof Companion" />
+        <div className="np-main">
+          <Alert tone="danger" title="界面出错了">
+            {this.state.error.message}
+          </Alert>
+          <Button block onClick={() => openTab('/')}>
+            打开完整页面
+          </Button>
+        </div>
+      </div>
+    );
+  }
+}
+
 function openTab(route: string): void {
   const url = chrome.runtime.getURL(`${TAB_URL}#${route}`);
   void chrome.tabs.create({ url });
@@ -26,6 +66,7 @@ function openTab(route: string): void {
 function Popup(): ReactNode {
   const [state, setState] = useState<
     | { status: 'loading' }
+    | { status: 'error'; message: string }
     | { status: 'empty' }
     | {
         status: 'connected';
@@ -42,9 +83,18 @@ function Popup(): ReactNode {
 
   useEffect(() => {
     void (async () => {
-      const wallet = await loadWallet();
-      const settings = await loadSettings();
-      setApprovedOrigins(await loadApprovedOrigins());
+      let wallet: Awaited<ReturnType<typeof loadWallet>> = null;
+      let settings: Awaited<ReturnType<typeof loadSettings>>;
+      try {
+        wallet = await loadWallet();
+        settings = await loadSettings();
+        setApprovedOrigins(await loadApprovedOrigins());
+      } catch (caught) {
+        // Never leave the spinner up: a popup that loads for ever is indistinguishable from
+        // one that failed, and the user is left staring at a spinner with no way forward.
+        setState({ status: 'error', message: (caught as Error).message });
+        return;
+      }
       if (!wallet) {
         setState({ status: 'empty' });
         return;
@@ -77,6 +127,19 @@ function Popup(): ReactNode {
     return (
       <div className="np-app" style={{ minHeight: 320, alignItems: 'center', justifyContent: 'center' }}>
         <Spinner />
+      </div>
+    );
+  }
+
+  if (state.status === 'error') {
+    return (
+      <div className="np-app" style={{ minHeight: 420 }}>
+        <Header title="NetProof Companion" />
+        <div className="np-main">
+          <Alert tone="danger" title="无法读取本机数据">
+            {state.message}
+          </Alert>
+        </div>
       </div>
     );
   }
@@ -188,7 +251,9 @@ const container = document.getElementById('root');
 if (container) {
   createRoot(container).render(
     <StrictMode>
-      <Popup />
+      <PopupBoundary>
+        <Popup />
+      </PopupBoundary>
     </StrictMode>,
   );
 }

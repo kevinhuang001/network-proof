@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NetProof Companion</title>
+    <!--
+      An action popup is sized from its content, and `width: 100%` gives a browser nothing to
+      size from: the window collapses to whatever the narrowest child demands — a spinner, on
+      the loading frame, is about twenty pixels wide. So the popup states its own size.
+    -->
+    <style>
+      html,
+      body {
+        width: 360px;
+        min-height: 420px;
+        margin: 0;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
