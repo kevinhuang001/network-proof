@@ -18,6 +18,7 @@ import { QrDisplay } from '../components/QrDisplay';
 import {
   ChainLogo,
   CheckIcon,
+  ChevronRightIcon,
   EyeIcon,
   KeyIcon,
   PlusIcon,
@@ -199,7 +200,7 @@ function BigAction({
           </div>
           <div className="np-body np-body--tight">{hint}</div>
         </div>
-        <span style={{ opacity: 0.3, fontSize: 20 }}>›</span>
+        <ChevronRightIcon size={20} />
       </div>
     </button>
   );
@@ -282,7 +283,7 @@ export function WalletsScreen({
                         setDraft(entry.label);
                       }}
                     >
-                      <div className="np-subtitle">{entry.label} ✎</div>
+                      <div className="np-subtitle">{entry.label}</div>
                     </button>
                   )}
                   <div className="np-body np-body--tight">

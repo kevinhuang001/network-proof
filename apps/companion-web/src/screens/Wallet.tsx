@@ -182,7 +182,7 @@ export function formatAge(timestamp: number): string {
 // ---------------------------------------------------------------------------
 
 export function HomeScreen(): ReactNode {
-  const { wallet, settings, navigate, activity } = useCompanion();
+  const { wallet, settings, navigate } = useCompanion();
   const { accounts } = useVisibleAccounts();
   const { native, tokens, error } = usePortfolio();
   const current = accounts[settings.addressIndex] ?? accounts[0];
@@ -261,49 +261,6 @@ export function HomeScreen(): ReactNode {
       </div>
 
       {error ? <Alert tone="warn">{error}</Alert> : null}
-      {solana ? (
-        <Alert tone="info">
-          Solana 没有可观察的账户公钥，设备导出的是地址本身。发送交易尚未实现。
-        </Alert>
-      ) : null}
-
-      <div className="np-row np-row--between">
-        <span className="np-label">活动</span>
-        {activity.length > 0 ? <Badge>{activity.length}</Badge> : null}
-      </div>
-      {activity.length === 0 ? (
-        <div className="np-card np-card--sunken">
-          <div className="np-body np-body--tight">本钱包发起过的交易，本地记录。</div>
-        </div>
-      ) : (
-        <div className="np-list">
-          {activity.slice(0, 8).map((record) => (
-            <div className="np-list__item np-list__item--static" key={record.hash}>
-              <div className="np-grow">
-                <div className="np-subtitle">
-                  {record.kind === 'send' ? '发送' : '合约调用'}
-                  {record.to ? ` → ${shortAddress(record.to, 6, 4)}` : ''}
-                </div>
-                <div className="np-body np-body--tight">
-                  {record.to ? shortAddress(record.to, 8, 6) : '合约部署'} · {formatAge(record.timestamp)}
-                </div>
-              </div>
-              <div className="np-right">
-                <div className="np-subtitle np-num">{formatEth(BigInt(record.value))}</div>
-                <Badge tone={record.status === 'failed' ? 'down' : 'up'}>
-                  {record.status === 'failed' ? '失败' : '已广播'}
-                </Badge>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {solana ? null : (
-        <div className="np-body np-body--tight np-center np-ink-3">
-          切换和管理都在右上角
-        </div>
-      )}
     </div>
   );
 }
@@ -335,6 +292,57 @@ function AssetBadge({
     >
       {symbol.slice(0, 4)}
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Activity: what this wallet did, on its own screen
+// ---------------------------------------------------------------------------
+
+/**
+ * Local history.
+ *
+ * A local record of what *this wallet* initiated, not a chain-wide history: reading the
+ * full history of an address means an indexer, and pointing this wallet at one would leak
+ * every address it watches to a third party. The list says "本机记录" rather than implying
+ * it is complete.
+ */
+export function ActivityScreen(): ReactNode {
+  const { activity, navigate, wallet } = useCompanion();
+
+  return (
+    <>
+      <Header title="交易历史" subtitle={wallet?.name} onBack={() => navigate({ name: 'home' })} />
+      <div className="np-main">
+        {activity.length === 0 ? (
+          <div className="np-card np-card--sunken">
+            <div className="np-body np-body--tight">本钱包发起过的交易，本地记录。</div>
+          </div>
+        ) : (
+          <div className="np-list">
+            {activity.map((record) => (
+              <div className="np-list__item np-list__item--static" key={record.hash}>
+                <div className="np-grow">
+                  <div className="np-subtitle">
+                    {record.kind === 'send' ? '发送' : '合约调用'}
+                    {record.to ? ` → ${shortAddress(record.to, 6, 4)}` : ''}
+                  </div>
+                  <div className="np-body np-body--tight">
+                    {record.chainId} · {formatAge(record.timestamp)}
+                  </div>
+                </div>
+                <div className="np-right">
+                  <div className="np-subtitle np-num">{formatEth(BigInt(record.value))}</div>
+                  <Badge tone={record.status === 'failed' ? 'down' : 'up'}>
+                    {record.status === 'failed' ? '失败' : '已广播'}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 

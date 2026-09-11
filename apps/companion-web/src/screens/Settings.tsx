@@ -15,7 +15,7 @@ import {
 } from '@netproof/companion';
 import { useCompanion } from '../App';
 import { Alert, Badge, Button, CopyButton, Header, KeyValue, Toast, useToast } from '../ui/kit';
-import { ChainLogo, CheckIcon } from '../ui/icons';
+import { ChainLogo, CheckIcon, ChevronRightIcon } from '../ui/icons';
 import { PasswordField } from '../ui/kit';
 import { createPasscodeRecord, verifyPasscode } from '../lib/lock';
 import { loadPasscode } from '../lib/store';
@@ -166,7 +166,7 @@ export function SettingsScreen(): ReactNode {
               派生方案、地址数量、xpub
             </span>
           </span>
-          <span style={{ opacity: 0.4 }}>›</span>
+          <ChevronRightIcon size={18} />
         </button>
         <button type="button" className="np-list__item" onClick={() => navigate({ name: 'developer' })}>
           <span className="np-grow">
@@ -175,7 +175,7 @@ export function SettingsScreen(): ReactNode {
               dApp 调用测试台（与扩展走同一套策略层）
             </span>
           </span>
-          <span style={{ opacity: 0.4 }}>›</span>
+          <ChevronRightIcon size={18} />
         </button>
       </div>
 

@@ -11,7 +11,15 @@ import {
 import { TextField } from '@netproof/ui/text-field';
 import { useCompanion } from '../App';
 import { Button, shortAddress } from '../ui/kit';
-import { CheckIcon, PencilIcon, PlusIcon, TrashIcon } from '../ui/icons';
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  CloseIcon,
+  PencilIcon,
+  PlusIcon,
+  TrashIcon,
+} from '../ui/icons';
 import { updateWallet, type WalletRecord } from '../lib/store';
 
 /**
@@ -82,6 +90,14 @@ export function Switcher({
     action();
   };
 
+  const saveAccountName = (): void => {
+    if (!renaming) return;
+    updateSettings({
+      accountNames: { ...settings.accountNames, [renaming.toLowerCase()]: draft.trim() || '账户' },
+    });
+    setRenaming(null);
+  };
+
   return (
     <>
       {wallets.map((entry) => {
@@ -92,22 +108,28 @@ export function Switcher({
         return (
           <div key={entry.id}>
             {confirming === entry.id ? (
-              <div className="np-list__item" style={{ borderRadius: 12, gap: 8 }}>
+              <div className="np-list__item" style={{ borderRadius: 12 }}>
                 <span className="np-grow np-body--tight">移除「{entry.name}」？</span>
-                <Button
-                  size="small"
-                  variant="danger-soft"
+                <button
+                  type="button"
+                  className="np-icon-btn np-icon-btn--plain np-down"
+                  aria-label="确认移除"
                   onClick={() => {
                     forgetWallet(entry.id);
                     setConfirming(null);
                     show('已移除钱包');
                   }}
                 >
-                  移除
-                </Button>
-                <Button size="small" variant="ghost" onClick={() => setConfirming(null)}>
-                  取消
-                </Button>
+                  <CheckIcon size={18} />
+                </button>
+                <button
+                  type="button"
+                  className="np-icon-btn np-icon-btn--plain"
+                  aria-label="取消"
+                  onClick={() => setConfirming(null)}
+                >
+                  <CloseIcon />
+                </button>
               </div>
             ) : (
               <div className="np-list__item" style={{ borderRadius: 12 }}>
@@ -118,25 +140,46 @@ export function Switcher({
                   aria-expanded={open}
                   aria-label={open ? '收起' : '展开'}
                 >
-                  <span style={{ opacity: 0.5, fontSize: 12 }}>{open ? '⌃' : '⌄'}</span>
+                  {open ? <ChevronUpIcon size={20} /> : <ChevronDownIcon size={20} />}
                 </button>
 
                 {renaming === entry.id ? (
-                  <TextField
-                    className="np-input"
-                    style={{ padding: '6px 10px', fontSize: 14 }}
-                    value={draft}
-                    autoFocus
-                    maxLength={24}
-                    onChange={setDraft}
-                    onBlur={() => {
-                      renameWallet(entry.id, draft);
-                      setRenaming(null);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
-                    }}
-                  />
+                  <>
+                    <TextField
+                      className="np-input np-grow"
+                      style={{ padding: '6px 10px', fontSize: 14 }}
+                      value={draft}
+                      autoFocus
+                      maxLength={24}
+                      onChange={setDraft}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          renameWallet(entry.id, draft);
+                          setRenaming(null);
+                        }
+                        if (event.key === 'Escape') setRenaming(null);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="np-icon-btn np-icon-btn--plain"
+                      aria-label="保存名称"
+                      onClick={() => {
+                        renameWallet(entry.id, draft);
+                        setRenaming(null);
+                      }}
+                    >
+                      <CheckIcon size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      className="np-icon-btn np-icon-btn--plain"
+                      aria-label="取消"
+                      onClick={() => setRenaming(null)}
+                    >
+                      <CloseIcon />
+                    </button>
+                  </>
                 ) : (
                   <button
                     type="button"
@@ -179,22 +222,35 @@ export function Switcher({
                     style={{ borderRadius: 12, paddingLeft: 14 }}
                   >
                     {renaming === account.address ? (
-                      <TextField
-                        className="np-input"
-                        style={{ padding: '6px 10px', fontSize: 14 }}
-                        value={draft}
-                        autoFocus
-                        onChange={setDraft}
-                        onBlur={() => {
-                          updateSettings({
-                            accountNames: {
-                              ...settings.accountNames,
-                              [account.address.toLowerCase()]: draft.trim() || account.name,
-                            },
-                          });
-                          setRenaming(null);
-                        }}
-                      />
+                      <>
+                        <TextField
+                          className="np-input np-grow"
+                          style={{ padding: '6px 10px', fontSize: 14 }}
+                          value={draft}
+                          autoFocus
+                          onChange={setDraft}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') saveAccountName();
+                            if (event.key === 'Escape') setRenaming(null);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="np-icon-btn np-icon-btn--plain"
+                          aria-label="保存名称"
+                          onClick={saveAccountName}
+                        >
+                          <CheckIcon size={18} />
+                        </button>
+                        <button
+                          type="button"
+                          className="np-icon-btn np-icon-btn--plain"
+                          aria-label="取消"
+                          onClick={() => setRenaming(null)}
+                        >
+                          <CloseIcon />
+                        </button>
+                      </>
                     ) : (
                       <button
                         type="button"

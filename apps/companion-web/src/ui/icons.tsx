@@ -147,3 +147,45 @@ export function LockIcon({ size = 20, className }: { size?: number; className?: 
     </Svg>
   );
 }
+
+export function ChevronDownIcon({ size = 20, className }: { size?: number; className?: string }): ReactNode {
+  return (
+    <Svg size={size} className={className}>
+      <path d="M5.5 9.5 12 16l6.5-6.5" />
+    </Svg>
+  );
+}
+
+export function ChevronRightIcon({ size = 20, className }: { size?: number; className?: string }): ReactNode {
+  return (
+    <Svg size={size} className={className}>
+      <path d="M9.5 5.5 16 12l-6.5 6.5" />
+    </Svg>
+  );
+}
+
+export function ChevronUpIcon({ size = 20, className }: { size?: number; className?: string }): ReactNode {
+  return (
+    <Svg size={size} className={className}>
+      <path d="M5.5 14.5 12 8l6.5 6.5" />
+    </Svg>
+  );
+}
+
+export function CloseIcon({ size = 18, className }: { size?: number; className?: string }): ReactNode {
+  return (
+    <Svg size={size} className={className}>
+      <path d="M6 6l12 12M18 6 6 18" />
+    </Svg>
+  );
+}
+
+export function HistoryIcon({ size = 20, className }: { size?: number; className?: string }): ReactNode {
+  return (
+    <Svg size={size} className={className}>
+      <path d="M12 7v5l3.5 2" />
+      <path d="M4.6 9.5A7.6 7.6 0 1 1 4.5 14" />
+      <path d="M4.5 5.5v4h4" />
+    </Svg>
+  );
+}

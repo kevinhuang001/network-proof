@@ -34,11 +34,19 @@ import {
 import { verifyPasscode, type PasscodeRecord } from './lib/lock';
 import { Alert, Badge, Button, Spinner, Toast, useToast } from './ui/kit';
 import { BrandMark } from './ui/brand';
-import { ChainLogo, GearIcon, LockIcon, MoreIcon } from './ui/icons';
+import {
+  ChainLogo,
+  ChevronDownIcon,
+  GearIcon,
+  HistoryIcon,
+  LockIcon,
+  MoreIcon,
+} from './ui/icons';
 import { ConnectScreen } from './screens/Connect';
 import { StartScreen } from './screens/Start';
 import { SignScreen } from './screens/Sign';
 import {
+  ActivityScreen,
   AddTokenScreen,
   AssetScreen,
   HomeScreen,
@@ -69,6 +77,7 @@ export type Route =
   | { name: 'connect' }
   /** One asset, and the screen where its send and receive buttons live. */
   | { name: 'asset'; asset: string; symbol: string; label: string }
+  | { name: 'activity' }
   | { name: 'send'; token?: string }
   | { name: 'receive' }
   | { name: 'add-token' }
@@ -120,6 +129,7 @@ export function useCompanion(): CompanionValue {
 function parseRoute(hash: string): Route {
   const path = hash.replace(/^#/u, '');
   if (path.startsWith('/connect')) return { name: 'connect' };
+  if (path.startsWith('/activity')) return { name: 'activity' };
   if (path.startsWith('/asset/')) {
     const [asset = 'native', symbol = '', label = ''] = path.slice('/asset/'.length).split('|');
     return { name: 'asset', asset, symbol, label };
@@ -438,6 +448,7 @@ function Shell(): ReactNode {
       {wallet ? <TopBar /> : null}
       {route.name === 'home' ? <HomeScreen /> : null}
       {route.name === 'connect' ? <ConnectScreen /> : null}
+      {route.name === 'activity' ? <ActivityScreen /> : null}
       {route.name === 'asset' ? (
         <AssetScreen asset={route.asset} symbol={route.symbol} label={route.label} />
       ) : null}
@@ -490,7 +501,7 @@ function TopBar(): ReactNode {
         >
           <ChainLogo chainId={settings.chainId} size={18} />
           {chainLabel(settings.chainId)}
-          <span style={{ opacity: 0.5 }}>▾</span>
+          <ChevronDownIcon size={16} />
         </button>
 
         <div className="np-grow" />
@@ -506,7 +517,7 @@ function TopBar(): ReactNode {
             <span style={{ fontSize: 11, opacity: 0.6 }}>{wallet?.name}</span>
             <span>{current?.name ?? '账户'}</span>
           </span>
-          <span style={{ opacity: 0.5 }}>▾</span>
+          <ChevronDownIcon size={16} />
         </button>
 
         {/* Same kebab, same corner, same two entries as the device's own menu. */}
@@ -524,6 +535,18 @@ function TopBar(): ReactNode {
             <>
               <div className="np-menu__scrim" onClick={() => setMenuOpen(false)} />
               <div className="np-menu__panel" role="menu">
+                <button
+                  type="button"
+                  className="np-menu__item"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    navigate({ name: 'activity' });
+                  }}
+                >
+                  <HistoryIcon size={18} />
+                  <span className="np-grow">交易历史</span>
+                </button>
                 <button
                   type="button"
                   className="np-menu__item"
