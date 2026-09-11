@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { AnchoredMenu } from '@netproof/ui/anchored-menu';
+import { useSurface } from './surface';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DEFAULT_SETTINGS,
@@ -37,6 +38,7 @@ import { Alert, Badge, Button, Spinner, Toast, useToast } from './ui/kit';
 import {
   ChainLogo,
   ChevronDownIcon,
+  ExternalIcon,
   GearIcon,
   HistoryIcon,
   LockIcon,
@@ -526,6 +528,7 @@ function Shell(): ReactNode {
  * paired, and the user asked which of their two wallets they were looking at.
  */
 function TopBar(): ReactNode {
+  const surface = useSurface();
   const { settings, updateSettings, navigate, wallet, lock } = useCompanion();
   const [openMenu, setOpenMenu] = useState<'network' | 'account' | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -616,6 +619,22 @@ function TopBar(): ReactNode {
                       <GearIcon size={18} />
                       <span className="np-grow">设置</span>
                     </button>
+                    {/* Only a popup has somewhere to go: the full page is where the roomier
+                        screens, the camera and the diagnostics live. */}
+                    {surface.kind === 'popup' && surface.openInTab ? (
+                      <button
+                        type="button"
+                        className="np-menu__item"
+                        role="menuitem"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          surface.openInTab?.('/');
+                        }}
+                      >
+                        <ExternalIcon size={18} />
+                        <span className="np-grow">在标签页中打开</span>
+                      </button>
+                    ) : null}
           </AnchoredMenu>
         </div>
       </header>
