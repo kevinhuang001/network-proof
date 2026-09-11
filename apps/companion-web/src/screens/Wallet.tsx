@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { TextField } from '@netproof/ui/text-field';
 import { useEffect, useMemo, useState } from 'react';
 import {
   allAddresses,
@@ -510,12 +511,12 @@ export function AccountsScreen(): ReactNode {
             </button>
             <div className="np-grow" style={{ minWidth: 0 }}>
               {renaming === account.address ? (
-                <input
+                <TextField
                   className="np-input"
                   style={{ padding: '6px 10px', fontSize: 14 }}
                   value={draft}
                   autoFocus
-                  onChange={(event) => setDraft(event.target.value)}
+                  onChange={setDraft}
                   onBlur={() => {
                     updateSettings({
                       accountNames: {
@@ -653,16 +654,14 @@ export function AddTokenScreen(): ReactNode {
         <label className="np-label" htmlFor="token-contract">
           合约地址
         </label>
-        <input
+        <TextField
           id="token-contract"
           className="np-input np-input--mono"
+          lang="en"
           value={contract}
           placeholder="0x..."
-          autoComplete="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          onChange={(event) => {
-            setContract(event.target.value);
+          onChange={(next) => {
+            setContract(next);
             setFound(null);
             setError(null);
           }}

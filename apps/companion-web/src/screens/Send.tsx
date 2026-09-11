@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { TextArea, TextField } from '@netproof/ui/text-field';
 import { useMemo, useState } from 'react';
 import { parseUnits, shortAddress } from '@netproof/core';
 import { chainLabel, fetchBalance, forwardToNode } from '@netproof/companion';
@@ -152,15 +153,13 @@ export function SendScreen(): ReactNode {
         <label className="np-label" htmlFor="send-to">
           收款地址
         </label>
-        <input
+        <TextField
           id="send-to"
           className="np-input np-input--mono"
+          lang="en"
           value={to}
           placeholder="0x..."
-          autoComplete="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          onChange={(event) => setTo(event.target.value)}
+          onChange={setTo}
         />
         {to.trim().length > 0 && !addressValid ? (
           <div className="np-body np-body--tight np-down">地址格式不正确（应为 0x + 40 位十六进制）</div>
@@ -171,13 +170,14 @@ export function SendScreen(): ReactNode {
         <label className="np-label" htmlFor="send-amount">
           金额（{settings.chainId === 56 ? 'BNB' : 'ETH'}）
         </label>
-        <input
+        <TextField
           id="send-amount"
           className="np-input"
+          lang="en"
           value={amount}
           placeholder="0.0"
           inputMode="decimal"
-          onChange={(event) => setAmount(event.target.value)}
+          onChange={setAmount}
         />
         <div className="np-row np-row--between">
           <span className="np-body np-body--tight">
@@ -215,12 +215,12 @@ export function SendScreen(): ReactNode {
           <label className="np-label" htmlFor="send-data">
             Calldata
           </label>
-          <textarea
+          <TextArea
             id="send-data"
             className="np-textarea np-textarea--mono"
             rows={3}
             value={data}
-            onChange={(event) => setData(event.target.value)}
+            onChange={setData}
           />
           {!dataValid ? (
             <div className="np-body np-body--tight np-down">calldata 必须是字节对齐的十六进制</div>

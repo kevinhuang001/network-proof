@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { Alert, Button, Header } from '../components/primitives';
+import { TextField } from '@netproof/ui/text-field';
 import { QR_PRESET_ORDER } from '../lib/qrPresets';
 import { useSession } from '../state/session';
 
@@ -85,12 +86,12 @@ export function DiagnosticsScreen({
               <Alert tone="danger" title="最后确认">
                 请输入 <span className="np-mono">ERASE</span> 以确认擦除。
               </Alert>
-              <input
+              <TextField
                 className="np-input np-input--mono"
+                lang="en"
                 value={wipePhrase}
                 placeholder="ERASE"
-                autoCapitalize="characters"
-                onChange={(event) => setWipePhrase(event.target.value)}
+                onChange={setWipePhrase}
               />
               <Button
                 variant="danger"

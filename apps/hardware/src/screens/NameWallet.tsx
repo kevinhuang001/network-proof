@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { Button, Header } from '../components/primitives';
 import { WalletIcon } from '../components/icons';
+import { TextField } from '@netproof/ui/text-field';
 
 /**
  * Name a wallet before saving it.
@@ -45,14 +46,14 @@ export function NameWalletScreen({
             <span className="np-icon-btn" style={{ border: 0, background: 'var(--np-bg-sunken)' }}>
               <WalletIcon size={18} />
             </span>
-            <input
+            <TextField
               id="wallet-name"
               className="np-input np-grow"
               value={name}
               autoFocus
               maxLength={24}
               placeholder="例如：主钱包"
-              onChange={(event) => setName(event.target.value)}
+              onChange={setName}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && trimmed.length > 0) onConfirm(trimmed);
               }}

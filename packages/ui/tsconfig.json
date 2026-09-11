@@ -2,7 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "lib": ["ES2022", "DOM"]
+    "lib": ["ES2022", "DOM"],
+    // This package ships one React component (the composing-safe text field), so it
+    // needs the JSX runtime types.
+    "jsx": "react-jsx"
   },
   "include": ["src"]
 }

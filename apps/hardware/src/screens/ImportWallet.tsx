@@ -18,6 +18,7 @@ import {
   PasswordField,
   PasswordMeter,
 } from '../components/primitives';
+import { TextArea, TextField } from '@netproof/ui/text-field';
 import { NameWalletScreen } from './NameWallet';
 import { useSession } from '../state/session';
 
@@ -151,18 +152,15 @@ function PhraseStep({
             must type into has to stay interactive and legible; hiding the phrase
             while it is being entered helps nobody.
           */}
-          <textarea
+          <TextArea
             id="mnemonic-input"
             className="np-textarea np-textarea--mono"
+            lang="en"
             value={text}
             placeholder={'按顺序输入或粘贴 12 / 15 / 18 / 21 / 24 个单词\n空格、换行、逗号分隔都可以，带序号（1. 2. 3.）也能识别'}
-            autoComplete="off"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
             inputMode="text"
             rows={4}
-            onChange={(event) => setText(event.target.value)}
+            onChange={setText}
           />
           <div className="np-body np-body--tight">
             注意周围是否有人能看到屏幕。输入内容不会被保存，只用于推导这一次的钱包。
@@ -385,12 +383,12 @@ function PasswordStep({
           <label className="np-label" htmlFor="import-name">
             钱包名称
           </label>
-          <input
+          <TextField
             id="import-name"
             className="np-input"
             value={label}
             maxLength={24}
-            onChange={(event) => setLabel(event.target.value)}
+            onChange={setLabel}
           />
         </div>
         <div className="np-field">

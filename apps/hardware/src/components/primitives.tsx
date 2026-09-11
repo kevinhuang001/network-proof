@@ -1,6 +1,7 @@
-import type { ChangeEvent, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { ChevronLeftIcon } from './icons';
+import { TextField } from '@netproof/ui/text-field';
 
 /** Small presentational primitives shared by every screen. */
 
@@ -188,16 +189,14 @@ export function PasswordField({
   const [reveal, setReveal] = useState(false);
   return (
     <div className="np-row">
-      <input
+      {/* Composing-safe, like every other device text field: see `textField.tsx`. */}
+      <TextField
         className="np-input np-grow"
         type={reveal ? 'text' : 'password'}
         value={value}
         placeholder={placeholder}
         autoFocus={autoFocus}
-        autoComplete="off"
-        autoCapitalize="off"
-        spellCheck={false}
-        onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
+        onChange={onChange}
         onKeyDown={(event) => {
           if (event.key === 'Enter') onEnter?.();
         }}

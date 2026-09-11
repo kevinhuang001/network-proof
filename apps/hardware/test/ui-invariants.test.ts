@@ -165,6 +165,36 @@ describe('UI invariants', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('never writes state back into a text field the user is typing in', () => {
+    // The reported bug: typing `clu` into the backup quiz produced `cclclu`. The input was
+    // controlled, and a phone keyboard does not type — it composes. It puts provisional
+    // text in the field and rewrites that region as the user picks characters; React
+    // writing its state back destroys the region the keyboard owns, so the keyboard
+    // re-inserts its composition on top: `c` + `cl` + `clu` = `cclclu`.
+    //
+    // Every text field therefore goes through `@netproof/ui/text-field`, which is
+    // uncontrolled while focused. Checkboxes are exempt: no keyboard, no composition.
+    const offenders: string[] = [];
+    for (const app of ['hardware', 'companion-web']) {
+      for (const file of sourceFiles(join(repoRoot, 'apps', app, 'src'))) {
+        const source = readFileSync(file, 'utf8');
+        for (const match of source.matchAll(/<(input|textarea)\b[\s\S]{0,500}?\/?>/gu)) {
+          const tag = match[0]!;
+          if (/type="(checkbox|radio|file)"/u.test(tag)) continue;
+          if (!/value=\{/u.test(tag)) continue;
+          offenders.push(`${file}: ${tag.slice(0, 60)}…`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+
+    // And the shared component has to stay uncontrolled: a `value` prop here would
+    // reintroduce exactly the write-back that caused the corruption.
+    const field = readFileSync(join(repoRoot, 'packages/ui/src/textField.tsx'), 'utf8');
+    expect(field).toContain('defaultValue={value}');
+    expect(field).toContain('document.activeElement');
+  });
+
   it('has a flex-gap fallback for every flex container that declares a gap', () => {
     // WebView 84 is where flexbox `gap` landed, and `@supports` cannot detect it (WebView
     // 69 honours `gap` in grid containers, so the query returns true while every flex

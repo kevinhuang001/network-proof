@@ -13,6 +13,7 @@ import {
 import { MnemonicGrid, MnemonicQuiz } from '../components/Mnemonic';
 import { ShieldIcon } from '../components/icons';
 import { DeviceMenu } from '../components/DeviceMenu';
+import { TextField } from '@netproof/ui/text-field';
 import { useSession } from '../state/session';
 
 /**
@@ -222,12 +223,12 @@ export function VaultPasswordScreen({
           <label className="np-label" htmlFor="create-name">
             钱包名称
           </label>
-          <input
+          <TextField
             id="create-name"
             className="np-input"
             value={label}
             maxLength={24}
-            onChange={(event) => setLabel(event.target.value)}
+            onChange={setLabel}
           />
         </div>
         <div className="np-field">

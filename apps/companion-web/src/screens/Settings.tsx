@@ -16,6 +16,7 @@ import {
 import { useCompanion } from '../App';
 import { Alert, Badge, Button, CopyButton, Header, KeyValue, Toast, useToast } from '../ui/kit';
 import { ChainLogo, CheckIcon } from '../ui/icons';
+import { TextArea, TextField } from '@netproof/ui/text-field';
 import { useVisibleAccounts } from './Wallet';
 
 /**
@@ -92,13 +93,14 @@ export function SettingsScreen(): ReactNode {
           <label className="np-label" htmlFor="rpc-url">
             {chainLabel(draft.chainId)} 的 RPC 节点
           </label>
-          <input
+          <TextField
             id="rpc-url"
             className="np-input"
+            lang="en"
             value={draft.rpcUrls[draft.chainId] ?? ''}
             placeholder="https://..."
-            onChange={(event) =>
-              setDraft({ ...draft, rpcUrls: { ...draft.rpcUrls, [draft.chainId]: event.target.value } })
+            onChange={(next) =>
+              setDraft({ ...draft, rpcUrls: { ...draft.rpcUrls, [draft.chainId]: next } })
             }
           />
         </div>
@@ -473,7 +475,7 @@ export function DeveloperScreen(): ReactNode {
 
       <div className="np-card">
         <div className="np-label">模拟站点 origin</div>
-        <input className="np-input" value={origin} onChange={(event) => setOrigin(event.target.value)} />
+        <TextField className="np-input" value={origin} onChange={setOrigin} lang="en" />
         <div className="np-row" style={{ marginTop: 10 }}>
           <Badge tone={approvedOrigins.includes(origin) ? 'up' : 'warn'}>
             {approvedOrigins.includes(origin) ? '已授权' : '未授权'}
@@ -527,13 +529,14 @@ export function DeveloperScreen(): ReactNode {
 
         {method === 'eth_sendTransaction' ? (
           <div className="np-stack" style={{ marginTop: 12 }}>
-            <input className="np-input np-input--mono" value={to} onChange={(event) => setTo(event.target.value)} />
-            <input className="np-input" value={valueEth} onChange={(event) => setValueEth(event.target.value)} />
-            <textarea
+            <TextField className="np-input np-input--mono" value={to} onChange={setTo} />
+            <TextField className="np-input" value={valueEth} onChange={setValueEth} />
+            <TextArea
               className="np-textarea np-textarea--mono"
               rows={2}
               value={data}
-              onChange={(event) => setData(event.target.value)}
+              onChange={setData}
+              lang="en"
             />
             <div className="np-chip-row">
               <button
@@ -558,11 +561,11 @@ export function DeveloperScreen(): ReactNode {
             </div>
           </div>
         ) : (
-          <textarea
+          <TextArea
             className="np-textarea"
             style={{ marginTop: 12 }}
             value={messageText}
-            onChange={(event) => setMessageText(event.target.value)}
+            onChange={setMessageText}
           />
         )}
 

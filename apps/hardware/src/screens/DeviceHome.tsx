@@ -12,6 +12,7 @@ import { ROBUST_FALLBACK_MS } from '../lib/qrPresets';
 import { useRobustQrFallback } from '../lib/useRobustQrFallback';
 import { Alert, Button, Header, haptic } from '../components/primitives';
 import { DeviceMenu } from '../components/DeviceMenu';
+import { TextField } from '@netproof/ui/text-field';
 import { QrDisplay } from '../components/QrDisplay';
 import {
   ChainLogo,
@@ -243,12 +244,12 @@ export function WalletsScreen({
                 </button>
                 <div className="np-grow" style={{ minWidth: 0 }}>
                   {renaming === entry.id ? (
-                    <input
+                    <TextField
                       className="np-input"
                       style={{ padding: '6px 10px', fontSize: 14 }}
                       value={draft}
                       autoFocus
-                      onChange={(event) => setDraft(event.target.value)}
+                      onChange={setDraft}
                       onBlur={() => {
                         renameWallet(entry.id, draft);
                         setRenaming(null);

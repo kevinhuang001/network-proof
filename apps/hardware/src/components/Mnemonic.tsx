@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+import { TextField } from '@netproof/ui/text-field';
 
 /** Numbered 3-column mnemonic grid, blurred until the user asks to see it. */
 export function MnemonicGrid({
@@ -51,9 +52,19 @@ export function MnemonicQuiz({
   const allFilled = answers.every((answer) => answer.trim().length > 0);
 
   const verify = (): void => {
-    const correct = asked.every(
-      (position, index) => answers[index]?.trim().toLowerCase() === words[position]?.toLowerCase(),
-    );
+    /*
+     * Read the fields, not the state.
+     *
+     * The inputs are uncontrolled (see `@netproof/ui/text-field`), and a keyboard can
+     * still be mid-composition on the last word when the button is tapped — the state
+     * update for that keystroke has not necessarily landed. The DOM is what the user can
+     * see, so the DOM is what gets checked against the words they were shown.
+     */
+    const readAt = (position: number): string => {
+      const element = document.getElementById(`quiz-${position}`);
+      return (element as HTMLInputElement | null)?.value.trim().toLowerCase() ?? '';
+    };
+    const correct = asked.every((position) => readAt(position) === words[position]?.toLowerCase());
     if (correct) onPassed();
     else setResult('wrong');
   };
@@ -66,17 +77,23 @@ export function MnemonicQuiz({
           <label className="np-label" htmlFor={`quiz-${position}`}>
             第 {position + 1} 个单词
           </label>
-          <input
+          {/*
+            Uncontrolled on purpose: see `textField.tsx`. A controlled input here made a
+            Chinese keyboard's composing text duplicate itself — typing `clu` produced
+            `cclclu` — which is exactly the screen where the user is copying words they
+            just wrote down, and the one place a wrong character costs them the wallet.
+          */}
+          <TextField
             id={`quiz-${position}`}
             className="np-input np-input--mono"
+            lang="en"
             value={answers[index] ?? ''}
-            autoComplete="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            onChange={(event) => {
-              const next = [...answers];
-              next[index] = event.target.value;
-              setAnswers(next);
+            onChange={(next) => {
+              setAnswers((previous) => {
+                const updated = [...previous];
+                updated[index] = next;
+                return updated;
+              });
               setResult('idle');
             }}
           />
