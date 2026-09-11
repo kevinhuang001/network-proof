@@ -222,6 +222,24 @@ export function QrDisplay({
   );
 }
 
+/**
+ * How long a scan may fail before it starts trying harder.
+ *
+ * `dontInvert` is half the work of `attemptBoth` and is right for the dark-on-light codes
+ * both apps display. If nothing at all has decoded after a few seconds, the cheap
+ * assumption is what is failing — a reflective screen can invert a code's apparent
+ * polarity — and "cannot scan it" is worse than a decode that costs twice as much.
+ */
+const ROBUST_DECODE_AFTER_MS = 4000;
+
+/** User-facing names for the frame types; the NP-* names are for the wire. */
+const SCAN_HINT: Record<'NP-XPUB' | 'NP-SIG' | 'NP-REQ' | 'NP-ACK', string> = {
+  'NP-XPUB': '登录',
+  'NP-REQ': '签名请求',
+  'NP-SIG': '签名结果',
+  'NP-ACK': '确认',
+};
+
 export interface ScanState {
   /** Scan attempts that yielded a decodable QR code. */
   decoded: number;
@@ -264,6 +282,7 @@ export function useQrScanner(options: {
     let stream: MediaStream | null = null;
     let frameHandle = 0;
     let stopped = false;
+    const openedAt = Date.now();
     let lastScanAt = 0;
     let lastText = '';
     let lastTextAt = 0;
@@ -296,7 +315,10 @@ export function useQrScanner(options: {
         480,
       );
       const image = context.getImageData(0, 0, 480, 480);
-      const result = jsQR(image.data, image.width, image.height, { inversionAttempts: 'dontInvert' });
+      const robust = decoded === 0 && Date.now() - openedAt > ROBUST_DECODE_AFTER_MS;
+      const result = jsQR(image.data, image.width, image.height, {
+        inversionAttempts: robust ? 'attemptBoth' : 'dontInvert',
+      });
       if (!result || result.data.length === 0) return;
       if (result.data === lastText && now - lastTextAt < 900) return;
       lastText = result.data;
@@ -315,19 +337,38 @@ export function useQrScanner(options: {
 
     void (async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
+        const opened = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false,
         });
+        // StrictMode mounts this effect twice; bail out before touching the element so
+        // the first attempt cannot overwrite the second one's stream and leak a camera.
+        if (stopped) {
+          for (const track of opened.getTracks()) track.stop();
+          return;
+        }
+        stream = opened;
         const video = videoRef.current;
-        if (!video) return;
-        video.srcObject = stream;
+        if (!video) {
+          for (const track of opened.getTracks()) track.stop();
+          return;
+        }
+        video.srcObject = opened;
         video.muted = true;
         video.playsInline = true;
-        await video.play();
-        setState((previous) => ({ ...previous, hint: `请对准 ${expectedType} 二维码` }));
+        try {
+          await video.play();
+        } catch (caught) {
+          // Reassigning srcObject interrupts a pending play() with an AbortError: that is
+          // our own cancelled attempt, not a camera failure to report.
+          if ((caught as { name?: string }).name !== 'AbortError') throw caught;
+        }
+        if (stopped || video.srcObject !== opened) return;
+        setError(null);
+        setState((previous) => ({ ...previous, hint: `请对准${SCAN_HINT[expectedType]}二维码` }));
         frameHandle = requestAnimationFrame(tick);
       } catch (caught) {
+        if (stopped) return;
         const message = (caught as Error).message;
         setError(`无法打开摄像头：${message}`);
         errorRef.current?.(message);
@@ -338,7 +379,7 @@ export function useQrScanner(options: {
       stopped = true;
       cancelAnimationFrame(frameHandle);
       for (const track of stream?.getTracks() ?? []) track.stop();
-      if (videoRef.current) videoRef.current.srcObject = null;
+      if (videoRef.current && videoRef.current.srcObject === stream) videoRef.current.srcObject = null;
     };
   }, [active, expectedType]);
 

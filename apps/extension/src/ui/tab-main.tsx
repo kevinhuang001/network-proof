@@ -227,7 +227,7 @@ function ConnectScreen({
         {!preview ? (
           <>
             <Alert tone="info" title="在离线手机上">
-              打开 NetProof Air → 「导出 xpub · 供插件钱包扫码登录」，然后把手机的动画二维码对准这个摄像头。
+              打开 NetProof Air → 「登录插件钱包」，把手机上的二维码对准这个摄像头。
             </Alert>
             <CameraPreview
               videoRef={videoRef}

@@ -7,12 +7,15 @@ import {
   mnemonicToSeed,
   solanaAccountPaths,
 } from '@netproof/core';
+import { NETWORKS } from '@netproof/ui/networks';
+import { ROBUST_FALLBACK_MS } from '../lib/qrPresets';
+import { useRobustQrFallback } from '../lib/useRobustQrFallback';
 import { Alert, Button, Header, haptic } from '../components/primitives';
+import { DeviceMenu } from '../components/DeviceMenu';
 import { QrDisplay } from '../components/QrDisplay';
 import {
-  ChainBadge,
+  ChainLogo,
   CheckIcon,
-  GearIcon,
   EyeIcon,
   KeyIcon,
   PlusIcon,
@@ -33,29 +36,19 @@ export function DeviceHomeScreen({
   onOpenWallet,
   onManage,
   onSettings,
+  onLock,
 }: {
   /** Enter the wallet whose hero card was tapped. */
   onOpenWallet: (id: string) => void;
   onManage: () => void;
   onSettings: () => void;
+  onLock: () => void;
 }): ReactNode {
   const { wallets, selectWallet } = useSession();
 
   return (
     <>
-      <Header
-        title="NetProof Air"
-        action={
-          <button
-            type="button"
-            className="np-icon-btn np-icon-btn--plain"
-            onClick={onSettings}
-            aria-label="设置"
-          >
-            <GearIcon size={22} />
-          </button>
-        }
-      />
+      <Header title="NetProof Air" action={<DeviceMenu onSettings={onSettings} onLock={onLock} />} />
       <div className="np-main">
         {wallets.map((entry, index) => (
           <button
@@ -101,18 +94,27 @@ export function WalletHomeScreen({
   onLogin,
   onSign,
   onBack,
+  onSettings,
+  onLock,
 }: {
   walletId: string;
   onLogin: () => void;
   onSign: () => void;
   onBack: () => void;
+  onSettings: () => void;
+  onLock: () => void;
 }): ReactNode {
   const { wallets, wallet, passphrase, passphraseRequired } = useSession();
   const entry = wallets.find((candidate) => candidate.id === walletId);
 
   return (
     <>
-      <Header title={entry?.label ?? '钱包'} subtitle="两个操作" onBack={onBack} />
+      <Header
+        title={entry?.label ?? '钱包'}
+        subtitle="两个操作"
+        onBack={onBack}
+        action={<DeviceMenu onSettings={onSettings} onLock={onLock} />}
+      />
       <div className="np-main">
         {passphraseRequired && passphrase.length === 0 ? (
           <Alert tone="warn">未载入 passphrase——将使用不带 passphrase 的账户。</Alert>
@@ -365,17 +367,23 @@ export function WalletsScreen({
  * chain, and the Solana addresses travel in the same payload. The device does not pick
  * — the companion does — so this is a statement of what is included, not a choice.
  */
-const SUPPORTED_NETWORKS = [
-  { chainId: 1, label: 'Ethereum' },
-  { chainId: 56, label: 'BNB Chain' },
-  { chainId: 137, label: 'Polygon' },
-  { chainId: 42161, label: 'Arbitrum' },
-  { chainId: 8453, label: 'Base' },
-  { chainId: 501, label: 'Solana' },
-] as const;
+/**
+ * What one export covers.
+ *
+ * The device does not choose a network — the companion does, and one exported account
+ * public key serves every EVM chain at once (coin type 60). Solana is the exception and
+ * is listed separately: the addresses are derived here, because the companion cannot get
+ * them from an EVM public key.
+ */
+const SUPPORTED_NETWORKS = NETWORKS;
 
 export function LoginQrScreen({ onBack }: { onBack: () => void }): ReactNode {
   const { wallet, deviceInfo, settings, activeWallet, mnemonic, passphrase } = useSession();
+  // If this code has been on screen this long, the other camera is not getting it.
+  const scanSpeed = useRobustQrFallback(true, ROBUST_FALLBACK_MS.login, {
+    fragmentLength: settings.qrFragmentLength,
+    frameDurationMs: settings.qrFrameDurationMs,
+  });
 
   const frames = useMemo(() => {
     if (!wallet) return [];
@@ -398,11 +406,11 @@ export function LoginQrScreen({ onBack }: { onBack: () => void }): ReactNode {
       },
       deviceInfo,
     );
-    return framesForMessage('NP-XPUB', message, settings.qrFragmentLength).frames;
+    return framesForMessage('NP-XPUB', message, scanSpeed.preset.fragmentLength).frames;
   }, [
     wallet,
     deviceInfo,
-    settings.qrFragmentLength,
+    scanSpeed.preset.fragmentLength,
     settings.solanaAddressCount,
     mnemonic,
     passphrase,
@@ -416,8 +424,8 @@ export function LoginQrScreen({ onBack }: { onBack: () => void }): ReactNode {
       <div className="np-main">
         <QrDisplay
           frames={frames}
-          frameDurationMs={settings.qrFrameDurationMs}
-          caption="用电脑上的插件钱包扫描"
+          frameDurationMs={scanSpeed.preset.frameDurationMs}
+          caption={scanSpeed.downgraded ? '已切到稳健速度 · 用电脑上的插件钱包扫描' : '用电脑上的插件钱包扫描'}
         />
 
         <div className="np-card np-card--sunken">
@@ -433,7 +441,7 @@ export function LoginQrScreen({ onBack }: { onBack: () => void }): ReactNode {
                   gap: 4,
                 }}
               >
-                <ChainBadge chainId={network.chainId} size={30} />
+                <ChainLogo chainId={network.chainId} size={30} />
                 <span style={{ fontSize: 11, opacity: 0.75 }}>{network.label}</span>
               </div>
             ))}

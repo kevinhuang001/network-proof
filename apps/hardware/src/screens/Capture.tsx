@@ -1,10 +1,30 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { CameraNoiseCollector } from '@netproof/core';
-import type { CollectorStats, EntropyResult } from '@netproof/core';
+import type { CollectorStats, EntropyBlocker, EntropyResult } from '@netproof/core';
 import { Alert, Button, Header, ProgressBar, haptic } from '../components/primitives';
-import { startEntropyCapture, cameraSupported } from '../lib/camera';
+import { startEntropyCapture, cameraSupported, isAbortError } from '../lib/camera';
 import type { CaptureHandle } from '../lib/camera';
+
+/**
+ * Turn a blocker into one short Chinese phrase.
+ *
+ * Terse on purpose: this sits under the progress bar and is read at a glance while the
+ * user is holding the phone at arm's length. The amounts are rounded to the unit the
+ * user cares about (bits, whole seconds) instead of echoing raw internal numbers.
+ */
+function blockerText(blocker: EntropyBlocker): string {
+  switch (blocker.code) {
+    case 'frames':
+      return `还需 ${Math.max(0, blocker.need - blocker.have)} 帧`;
+    case 'duration':
+      return `还需 ${Math.max(0, (blocker.needMs - blocker.haveMs) / 1000).toFixed(1)} 秒`;
+    case 'entropy':
+      return `还需 ${Math.max(0, Math.ceil(blocker.needBits - blocker.haveBits))} bit 噪声`;
+    case 'stalled':
+      return '画面静止，轻轻晃一下';
+  }
+}
 
 /**
  * Step 1 of wallet creation: harvest true randomness from the camera sensor.
@@ -27,6 +47,7 @@ export function CaptureScreen({
   const captureRef = useRef<CaptureHandle | null>(null);
   const collectorRef = useRef<CameraNoiseCollector | null>(null);
   const [stats, setStats] = useState<CollectorStats | null>(null);
+  const [blockers, setBlockers] = useState<EntropyBlocker[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [started, setStarted] = useState(false);
@@ -34,6 +55,11 @@ export function CaptureScreen({
   useEffect(() => {
     if (!started) return;
     let cancelled = false;
+    // StrictMode runs this effect twice in development, and leaving the screen while the
+    // permission prompt is open cancels it for real. The controller makes both cases
+    // release the camera, instead of leaving a stream running behind a screen that is no
+    // longer showing it.
+    const controller = new AbortController();
     const collector = new CameraNoiseCollector({
       requiredBits,
       minFrames: 24,
@@ -50,8 +76,15 @@ export function CaptureScreen({
           collector,
           sampleSize: 256,
           frameIntervalMs: 33,
+          signal: controller.signal,
           onFrame: ({ stats: next }) => {
-            if (!cancelled) setStats(next);
+            if (cancelled) return;
+            setStats(next);
+            // The button's enabled state and the hint are both derived from this one
+            // list, so they can never disagree — a button that says "完成采集" while the
+            // hint underneath explains why it cannot finish is what made this screen
+            // look broken.
+            setBlockers(collector.blockers());
           },
           onError: (caught) => {
             if (!cancelled) setError(caught.message);
@@ -63,12 +96,14 @@ export function CaptureScreen({
         }
         captureRef.current = handle;
       } catch (caught) {
-        if (!cancelled) setError((caught as Error).message);
+        // An interrupted start is our own shutdown, not a camera failure.
+        if (!cancelled && !isAbortError(caught)) setError((caught as Error).message);
       }
     })();
 
     return () => {
       cancelled = true;
+      controller.abort();
       captureRef.current?.stop();
       captureRef.current = null;
     };
@@ -117,10 +152,13 @@ export function CaptureScreen({
     setFinishing(false);
     collectorRef.current?.reset();
     setStats(null);
+    setBlockers([]);
   };
 
   const progress = stats?.progress ?? 0;
-  const ready = progress >= 1 && !(stats?.lastFrameStalled ?? false);
+  // `finalize()` refuses on exactly these blockers, so readiness is defined by the same
+  // list rather than by a second, hand-written condition that can drift out of step.
+  const ready = stats !== null && blockers.length === 0;
 
   return (
     <>
@@ -137,9 +175,6 @@ export function CaptureScreen({
                 <span className="np-grow">保持 3–5 秒，轻微晃动更好</span>
               </div>
             </div>
-            <Alert tone="warn" title="先开着飞行模式">
-              这台设备不应该联网。系统层面它也没有联网权限。
-            </Alert>
             {!cameraSupported() ? (
               <Alert tone="danger" title="摄像头不可用">
                 当前环境不支持摄像头。请使用 Android 版 App，或在 https 下打开。
@@ -166,6 +201,15 @@ export function CaptureScreen({
                 </span>
               </div>
               <ProgressBar value={progress} tone={ready ? 'up' : 'neutral'} />
+              {/*
+                The blocker hint lives here, not in the sticky footer, and in a slot with
+                a fixed height. In the footer it sat directly above the action button and
+                re-wrapped as its numbers changed, so the button moved up and down on
+                every frame. Nothing about this text can move a control now.
+              */}
+              <div className="np-hint-slot">
+                {ready ? '轻轻晃动手机会更快' : blockers.map(blockerText).join(' · ')}
+              </div>
             </div>
 
             <div className="np-grid-3">
@@ -183,18 +227,22 @@ export function CaptureScreen({
               </div>
             </div>
 
-            {stats?.lastFrameStalled ? (
-              <Alert tone="warn">画面看起来是静止的——对准有光的区域并轻微晃动。</Alert>
-            ) : null}
-
-            {stats && stats.frames > 8 && progress < 0.15 ? (
+            {/*
+              One warning, shown only after the capture has had long enough to prove the
+              problem is real. The previous version fired at frame 9 and vanished again
+              the moment progress passed 15%, so a slow start made it blink.
+            */}
+            {(stats?.durationMs ?? 0) > 2500 && progress < 0.15 ? (
               <Alert tone="warn">熵积累很慢——对准更暗或有更多细节的区域。</Alert>
             ) : null}
-
-            <div className="np-body np-body--tight np-center">轻微晃动手机会更快</div>
           </>
         )}
       </div>
+      {/*
+        The footer holds exactly one button, in every state, so its position is fixed.
+        A failure swaps in a retry button and puts the reason *above* it, which grows the
+        footer upward instead of pushing the button down.
+      */}
       {started ? (
         <div className="np-footer">
           {error ? (
@@ -207,16 +255,9 @@ export function CaptureScreen({
               重新采集
             </Button>
           ) : (
-            <>
-              <Button block disabled={!ready || finishing} onClick={finish}>
-                {finishing ? '正在生成助记词…' : ready ? '完成采集，生成助记词' : '继续采集…'}
-              </Button>
-              {!ready && stats ? (
-                <div className="np-body np-body--tight np-center">
-                  {collectorRef.current?.blockingReasons().join('；') ?? '正在准备…'}
-                </div>
-              ) : null}
-            </>
+            <Button block disabled={!ready || finishing} onClick={finish}>
+              {finishing ? '正在生成助记词…' : ready ? '完成采集，生成助记词' : '继续采集…'}
+            </Button>
           )}
         </div>
       ) : null}

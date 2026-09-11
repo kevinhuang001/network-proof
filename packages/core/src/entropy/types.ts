@@ -65,9 +65,29 @@ export interface CollectorStats {
   onesFraction: number;
   /** Pixels dropped because their temporal delta looked scene-driven, not noise. */
   rejectedPixels: number;
-  /** True when the last frame contributed ~no fresh noise (frozen/covered lens). */
+  /**
+   * True when the sensor is contributing ~no fresh noise (frozen or covered lens).
+   *
+   * This is *debounced*: see `STALL_ENTER_FRAMES`. A single frame can legitimately
+   * earn no marginal credit on a perfectly healthy sensor — debiasing may discard a
+   * run-heavy frame entirely — so a raw per-frame flag flickers, and every consumer
+   * of it flickers with it.
+   */
   lastFrameStalled: boolean;
 }
+
+/**
+ * Why a wallet seed cannot be produced yet, as data rather than prose.
+ *
+ * The prose form (`blockingReasons`) is for error messages and logs. A UI must not
+ * render it: it embeds live numbers, so its length changes every frame, and English
+ * text inside a Chinese interface is the wrong language for the user in front of it.
+ */
+export type EntropyBlocker =
+  | { code: 'frames'; have: number; need: number }
+  | { code: 'duration'; haveMs: number; needMs: number }
+  | { code: 'entropy'; haveBits: number; needBits: number }
+  | { code: 'stalled' };
 
 export interface EntropyResult {
   /** Extracted randomness, `requiredBytes` long. This is the wallet master secret. */

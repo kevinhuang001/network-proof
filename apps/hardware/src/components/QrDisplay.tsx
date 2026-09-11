@@ -59,11 +59,6 @@ export function QrDisplay({
           </span>
         ) : null}
       </div>
-      {progress.total > 1 ? (
-        <div className="np-body np-body--tight np-center">
-          动画二维码 · 无需按顺序，扫到足够帧数即可完成
-        </div>
-      ) : null}
     </div>
   );
 }

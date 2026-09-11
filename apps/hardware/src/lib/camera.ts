@@ -25,6 +25,8 @@ export interface CaptureOptions {
   sampleSize?: number;
   /** Minimum gap between sampled frames, in ms. */
   frameIntervalMs?: number;
+  /** Aborts a start that is still in flight, and releases the camera at once. */
+  signal?: AbortSignal;
   onFrame?: (info: { contribution: ReturnType<CameraNoiseCollector['addFrame']>; stats: CollectorStats }) => void;
   onError?: (error: Error) => void;
 }
@@ -40,6 +42,62 @@ export function cameraSupported(): boolean {
     typeof navigator !== 'undefined' &&
     typeof navigator.mediaDevices?.getUserMedia === 'function'
   );
+}
+
+/** Mark an error as "we cancelled this ourselves", so callers can ignore it. */
+export function abortError(): Error {
+  const error = new Error('camera start was cancelled');
+  error.name = 'AbortError';
+  return error;
+}
+
+export function isAbortError(error: unknown): boolean {
+  return (error as { name?: string } | null)?.name === 'AbortError';
+}
+
+/**
+ * Attach a stream to the video element and start playing, surviving a teardown.
+ *
+ * `video.play()` rejects with `AbortError: The play() request was interrupted by a new
+ * load request` whenever `srcObject` is assigned again before the promise settles. React
+ * StrictMode mounts every effect twice in development, and both mounts call this, so the
+ * first attempt is *always* interrupted — and its rejection used to be shown to the user
+ * as "无法打开摄像头", on a camera that was in fact open and about to work. The same
+ * interruption happens for real whenever the user leaves the screen mid-permission-prompt,
+ * which also used to leak an open camera: the captured stream was still running, on a
+ * device whose entire premise is that the camera is not quietly doing things.
+ */
+export async function attachStream(
+  video: HTMLVideoElement,
+  stream: MediaStream,
+  signal?: AbortSignal,
+): Promise<void> {
+  const release = (): void => {
+    for (const track of stream.getTracks()) track.stop();
+    if (video.srcObject === stream) video.srcObject = null;
+  };
+  if (signal?.aborted) {
+    release();
+    throw abortError();
+  }
+  video.srcObject = stream;
+  video.muted = true;
+  video.playsInline = true;
+  try {
+    await video.play();
+  } catch (error) {
+    // A refusal we should report is a policy refusal; an interrupted play() means
+    // somebody replaced the source, which is exactly what a cancelled attempt does.
+    if (!isAbortError(error)) {
+      release();
+      throw error;
+    }
+  }
+  // Whoever owns the element now, it is not this attempt: hand the camera back.
+  if (signal?.aborted || video.srcObject !== stream) {
+    release();
+    throw abortError();
+  }
 }
 
 /** Request the rear camera. Throws a readable error the UI can show verbatim. */
@@ -77,15 +135,13 @@ export async function startEntropyCapture(options: CaptureOptions): Promise<Capt
     collector,
     sampleSize = 256,
     frameIntervalMs = 33,
+    signal,
     onFrame,
     onError,
   } = options;
 
   const stream = await requestCameraStream();
-  video.srcObject = stream;
-  video.muted = true;
-  video.playsInline = true;
-  await video.play();
+  await attachStream(video, stream, signal);
 
   const canvas = document.createElement('canvas');
   canvas.width = sampleSize;
@@ -127,7 +183,8 @@ export async function startEntropyCapture(options: CaptureOptions): Promise<Capt
     const cleanup = (): void => {
       cancelAnimationFrame(frameHandle);
       for (const track of stream.getTracks()) track.stop();
-      video.srcObject = null;
+      // Only detach the source this attempt installed; a newer one may own the element.
+      if (video.srcObject === stream) video.srcObject = null;
       resolve();
     };
     stream.getVideoTracks()[0]?.addEventListener('ended', cleanup);
@@ -138,7 +195,7 @@ export async function startEntropyCapture(options: CaptureOptions): Promise<Capt
   let stopInternal: () => void = () => {
     running = false;
     for (const track of stream.getTracks()) track.stop();
-    video.srcObject = null;
+    if (video.srcObject === stream) video.srcObject = null;
   };
 
   return {

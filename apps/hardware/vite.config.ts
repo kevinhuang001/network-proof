@@ -20,7 +20,12 @@ export default defineConfig({
   base: './',
   build: {
     outDir: 'dist',
-    target: 'es2022',
+    // Build floor: Chrome/WebView 67 — the oldest version with BigInt, which the
+    // wallet's arithmetic needs and no polyfill can provide. It cannot go lower. The
+    // device app runs on an old phone that stays offline forever, so it never receives
+    // the WebView updates that would raise this floor on its own. Runtime APIs newer
+    // than 67 are polyfilled by public/compat.js, which loads before the bundle.
+    target: 'chrome67',
     sourcemap: false,
     chunkSizeWarningLimit: 1500,
   },

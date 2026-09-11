@@ -64,20 +64,15 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <!--
-      Read-only connectivity state, so the app can tell the user the truth.
+      Read-only connectivity state used to be requested here so the app could show the
+      user whether the phone was online. That whole apparatus is gone: the app no longer
+      asks the OS anything about the network, so the permission is gone with it. Least
+      privilege is not a slogan on a device whose entire value is that it cannot talk to
+      anyone.
 
-      ACCESS_NETWORK_STATE grants NO network capability: it only permits *reading*
-      whether a network exists. Without it, Android's WebView cannot register its
-      connectivity callback and `navigator.onLine` reports `true` forever, which
-      made an earlier build nag users who had correctly enabled airplane mode.
-
-      The permission that would grant network access is INTERNET, and that one is
-      deliberately absent below: the OS denies this app a socket outright, which is
-      a stronger guarantee than any runtime check.
+      Deliberately absent, and this is the real guarantee: INTERNET and ACCESS_WIFI_STATE.
+      The OS denies this app a socket outright, which is stronger than any runtime check.
     -->
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
-    <!-- Deliberately absent: INTERNET, ACCESS_WIFI_STATE. -->
     <!--
     <uses-permission android:name="android.permission.INTERNET" />
     -->

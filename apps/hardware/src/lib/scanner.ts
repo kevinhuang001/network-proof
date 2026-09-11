@@ -1,7 +1,7 @@
 import jsQR from 'jsqr';
 import { FrameCollector } from '@netproof/core';
 import type { FrameCollectorProgress, FrameType } from '@netproof/core';
-import { requestCameraStream } from './camera';
+import { attachStream, requestCameraStream } from './camera';
 
 /**
  * Continuous QR scanning from the camera.
@@ -12,6 +12,14 @@ import { requestCameraStream } from './camera';
  * screen animates, instead of having to line up one perfect shot.
  */
 
+/**
+ * How long a scan may fail before it starts trying harder.
+ *
+ * Long enough that a user who is still lining up the code never pays for it, short enough
+ * to land while they are still holding the phone steady.
+ */
+const ROBUST_DECODE_AFTER_MS = 4000;
+
 export interface ScanOptions {
   video: HTMLVideoElement;
   expectedType?: FrameType;
@@ -19,6 +27,8 @@ export interface ScanOptions {
   scanSize?: number;
   /** Minimum gap between scans, in ms. */
   intervalMs?: number;
+  /** Aborts a start that is still in flight, and releases the camera at once. */
+  signal?: AbortSignal;
   onProgress: (progress: FrameCollectorProgress) => void;
   onComplete: (payload: Uint8Array) => void;
   onError?: (error: Error) => void;
@@ -30,13 +40,19 @@ export interface ScanHandle {
 }
 
 export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
-  const { video, expectedType, scanSize = 480, intervalMs = 60, onProgress, onComplete, onError } = options;
+  const {
+    video,
+    expectedType,
+    scanSize = 480,
+    intervalMs = 60,
+    signal,
+    onProgress,
+    onComplete,
+    onError,
+  } = options;
 
   const stream = await requestCameraStream();
-  video.srcObject = stream;
-  video.muted = true;
-  video.playsInline = true;
-  await video.play();
+  await attachStream(video, stream, signal);
 
   const collector = new FrameCollector(expectedType);
   const canvas = document.createElement('canvas');
@@ -52,6 +68,8 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
   let frameHandle = 0;
   let lastText = '';
   let lastTextAt = 0;
+  const openedAt = Date.now();
+  let decodedAny = false;
 
   const tick = (now: number): void => {
     if (!running) return;
@@ -65,10 +83,22 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
       const sy = (video.videoHeight - side) / 2;
       context.drawImage(video, sx, sy, side, side, 0, 0, scanSize, scanSize);
       const image = context.getImageData(0, 0, scanSize, scanSize);
+      /*
+       * Start cheap and get thorough, rather than the reverse.
+       *
+       * `dontInvert` is half the work of `attemptBoth` and is right for a dark code on a
+       * light screen, which is what both apps display. If nothing at all has been decoded
+       * after a few seconds, though, the cheap assumption is the thing that is failing —
+       * a strongly lit or reflective screen can invert a code's apparent polarity, and
+       * "cannot scan it at all" is a much worse outcome than doubling the CPU cost of a
+       * decode that is not succeeding anyway.
+       */
+      const robust = !decodedAny && Date.now() - openedAt > ROBUST_DECODE_AFTER_MS;
       const result = jsQR(image.data, image.width, image.height, {
-        inversionAttempts: 'dontInvert',
+        inversionAttempts: robust ? 'attemptBoth' : 'dontInvert',
       });
       if (!result || result.data.length === 0) return;
+      decodedAny = true;
       // A held-still camera returns the same code many times per second; feed each
       // distinct code once, but re-feed after a while so a lost frame can be re-seen.
       if (result.data === lastText && now - lastTextAt < 900) return;
@@ -93,7 +123,7 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
       running = false;
       cancelAnimationFrame(frameHandle);
       for (const track of stream.getTracks()) track.stop();
-      video.srcObject = null;
+      if (video.srcObject === stream) video.srcObject = null;
     },
   };
 }

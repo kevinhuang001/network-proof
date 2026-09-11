@@ -73,37 +73,44 @@ body {
 
 /* ---------- layout ---------- */
 
+/*
+ * The app fills whatever it is given. The width cap lives in the desktop media query
+ * below, and nowhere else.
+ *
+ * It used to sit here as `max-width: 420px`, which is not a phone width at all: an
+ * Android phone whose 1080px panel reports a density of 2.25 gives a viewport of 480
+ * CSS pixels, so the app rendered 420 wide with 30px of page background down each side
+ * and looked like it had failed to load properly. Whether the viewport is wide because
+ * it is a desktop window or because the panel is dense is not something a min-width
+ * query can tell apart — the pointer can.
+ */
 .np-app {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
   min-height: 100dvh;
   width: 100%;
-  max-width: var(--np-phone-width);
-  margin: 0 auto;
   background: var(--np-bg);
 }
 
 /*
- * Phone-sized on every screen.
+ * Phone-sized only for a mouse.
  *
- * These apps are phone apps: they are driven by a camera and a thumb, and at desktop
- * width the wallet's own layout falls apart — a 1200px-wide token row is unreadable.
- * So above phone width the app becomes a centred, phone-sized card on the page
- * background, and on an actual phone the media query never applies and it fills the
- * screen edge to edge.
+ * On a real touch device the app fills the screen edge to edge, at any density. On a
+ * desktop-class machine — `hover: hover` and a fine pointer — the layout becomes a
+ * centred, phone-sized card instead of stretching a camera prompt and a token row
+ * across 1400 pixels.
  *
  * There is deliberately no fake device bezel or notch: this is a layout constraint,
  * not a mockup.
  */
-@media (min-width: 520px) {
+@media (min-width: 520px) and (hover: hover) and (pointer: fine) {
   body {
     background: var(--np-bg-sunken);
     padding: 0;
   }
 
-  .np-app,
-  .np-fullscreen {
+  .np-app {
     max-width: var(--np-phone-width);
     height: 100vh;
     height: 100dvh;
@@ -111,10 +118,6 @@ body {
     box-shadow: 0 0 0 1px var(--np-line), 0 24px 60px rgba(11, 11, 15, 0.1);
     overflow: hidden;
     overflow-y: auto;
-  }
-
-  .np-app--wide {
-    max-width: var(--np-phone-width);
   }
 }
 
@@ -127,6 +130,7 @@ body {
   gap: 12px;
   padding: 14px 20px;
   background: rgba(255, 255, 255, 0.86);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
   backdrop-filter: saturate(180%) blur(16px);
   border-bottom: 1px solid var(--np-line);
 }
@@ -166,8 +170,11 @@ body {
 .np-footer {
   position: sticky;
   bottom: 0;
+  /* Plain value first: on a WebView without `env()` the whole calc() is invalid. */
+  padding: 14px 20px;
   padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.94);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
   backdrop-filter: saturate(180%) blur(16px);
   border-top: 1px solid var(--np-line);
   display: flex;
@@ -390,6 +397,7 @@ body {
 /* ---------- buttons ---------- */
 
 .np-btn {
+  -webkit-appearance: none;
   appearance: none;
   border: 1px solid transparent;
   border-radius: var(--np-radius-pill);
@@ -544,6 +552,7 @@ body {
 }
 
 .np-switch input {
+  -webkit-appearance: none;
   appearance: none;
   width: 48px;
   height: 28px;
@@ -749,13 +758,90 @@ body {
   background: var(--np-up);
 }
 
+/*
+ * Dropdown menu, anchored to the control that opened it.
+ *
+ * Deliberately not the `.np-mask`/`.np-sheet` pair: that dims the whole screen and slides
+ * a panel up from the bottom, which is right for picking an account and wrong for two
+ * items that belong to a button in the corner. A dropdown leaves the screen visible,
+ * because the reason you opened it is on that screen.
+ *
+ * The scrim is transparent and exists only to catch the tap that dismisses the menu.
+ */
+.np-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.np-menu__scrim {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+}
+
+.np-menu__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 21;
+  min-width: 178px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  background: var(--np-bg);
+  border: 1px solid var(--np-line);
+  border-radius: var(--np-radius-md);
+  box-shadow: var(--np-shadow-float);
+}
+
+.np-menu__item {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px;
+  border-radius: var(--np-radius-sm);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.np-menu__item:active {
+  background: var(--np-bg-subtle);
+}
+
+/*
+ * A one-line status slot whose height never changes.
+ *
+ * Live capture text ("还需 37 bit 噪声") changes length on every frame. Rendered as an
+ * ordinary block under a button, it re-wrapped a few times a second and dragged the
+ * button up and down with it — the control the user was aiming at moved while they
+ * aimed. Whatever goes in here is clipped, never resized.
+ */
+.np-hint-slot {
+  min-height: 20px;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+  color: var(--np-ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .np-metric {
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-
-.np-metric__value {
+}.np-metric__value {
   font-size: 18px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -789,7 +875,11 @@ body {
 
 .np-camera__overlay {
   position: absolute;
-  inset: 0;
+  /* Written out rather than as `inset`, which WebView 87 and older ignore. */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -863,10 +953,9 @@ body {
 .np-fullscreen {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
-  max-width: var(--np-phone-width);
-  margin: 0 auto;
+  flex: 1;
+  min-height: 100%;
+  padding: 0 24px 28px;
   padding: 0 24px calc(28px + env(safe-area-inset-bottom));
   background: var(--np-bg);
 }
@@ -975,7 +1064,11 @@ body {
 
 .np-mask {
   position: fixed;
-  inset: 0;
+  /* Written out because `inset` is ignored by WebView 87 and older. */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background: rgba(11, 11, 15, 0.45);
   display: flex;
   align-items: flex-end;
@@ -989,6 +1082,7 @@ body {
   border-radius: var(--np-radius-xl) var(--np-radius-xl) 0 0;
   width: 100%;
   max-width: var(--np-phone-width);
+  padding: 22px 20px;
   padding: 22px 20px calc(22px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
@@ -1041,3 +1135,75 @@ body {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ==========================================================================
+   Legacy layout fallbacks.
+   ==========================================================================
+
+   The device app is meant to run on an old phone, offline, indefinitely. A phone that
+   never goes online never receives the Play Store WebView updates that would move it
+   forward, so the floor is set by what the phone shipped with, not by the desktop
+   browser this was developed in.
+
+   The floor is WebView 67, and it cannot honestly go lower: the wallet's arithmetic is
+   BigInt, which arrived in 67 and has no polyfill. Everything below is what remains
+   after that: CSS features the loader detects and the blocks at the end of this file
+   replace.
+
+   Two features newer than that floor cannot be shimmed in JavaScript, because they are
+   layout:
+
+   1. Flexbox `gap` (WebView 84). `@supports` cannot detect it — WebView 69 honours
+      `gap` in *grid* containers, so `@supports (gap: 1px)` returns true while every
+      flex container quietly packs its children together with no spacing at all. The
+      loader measures it and sets `np-no-flex-gap`.
+
+   2. `aspect-ratio` (WebView 88). Without it the camera box collapses to zero height,
+      which breaks the one screen the product depends on. `CSS.supports` detects it and
+      sets `np-no-aspect-ratio`.
+
+   Both blocks below are dead code on any modern browser, which is deliberate: the
+   fallback has to be provably additive, not a second layout shipped to everyone.
+   ========================================================================== */
+
+html.np-no-aspect-ratio .np-camera {
+  /* The classic pre-`aspect-ratio` square: zero height plus a percentage padding, which
+     resolves against the *width* of the containing block. */
+  height: 0;
+  padding-bottom: 100%;
+}
+
+html.np-no-aspect-ratio .np-camera video {
+  /* `height: 100%` would resolve against the zero content height, so the video is
+     positioned to fill the padding box instead. */
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+html.np-no-aspect-ratio .np-scan-frame {
+  height: 0;
+  padding-bottom: 72%;
+}
+
+/* One rule per flex container that declares a gap. Anything missed here is a missing
+   margin, not a broken screen, so the list is exhaustive rather than clever. */
+html.np-no-flex-gap .np-header > * + * { margin-left: 12px; }
+html.np-no-flex-gap .np-main > * + * { margin-top: 16px; }
+html.np-no-flex-gap .np-footer > * + * { margin-top: 10px; }
+html.np-no-flex-gap .np-stack > * + * { margin-top: 12px; }
+html.np-no-flex-gap .np-row > * + * { margin-left: 12px; }
+html.np-no-flex-gap .np-list__item > * + * { margin-left: 12px; }
+html.np-no-flex-gap .np-field > * + * { margin-top: 6px; }
+html.np-no-flex-gap .np-chip-row > * + * { margin-left: 8px; }
+html.np-no-flex-gap .np-keyvalue > * + * { margin-left: 16px; }
+html.np-no-flex-gap .np-alert > * + * { margin-left: 10px; }
+html.np-no-flex-gap .np-metric > * + * { margin-top: 2px; }
+html.np-no-flex-gap .np-fullscreen__body > * + * { margin-top: 14px; }
+html.np-no-flex-gap .np-fullscreen__actions > * + * { margin-top: 10px; }
+html.np-no-flex-gap .np-mnemonic-word > * + * { margin-left: 7px; }
+html.np-no-flex-gap .np-sheet > * + * { margin-top: 14px; }
+html.np-no-flex-gap .np-menu__panel > * + * { margin-top: 2px; }
+html.np-no-flex-gap .np-menu__item > * + * { margin-left: 10px; }

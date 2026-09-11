@@ -20,7 +20,7 @@ import {
 } from '../ui/kit';
 
 /**
- * Pairing: scan the device's `NP-XPUB` QR.
+ * Pairing: scan the device's login QR, which carries the account xpubs.
  *
  * The collector is held in a ref rather than component state because frames arrive
  * from a camera callback and must accumulate across re-renders — losing it would
@@ -39,7 +39,7 @@ export function ConnectScreen(): ReactNode {
     if (collector.complete) {
       try {
         const message = decodeMessage(collector.result());
-        if (message.t !== 'xpub') throw new Error('扫描到的不是 xpub 导出二维码');
+        if (message.t !== 'xpub') throw new Error('扫描到的不是登录二维码');
         setPreview(message);
         setScanning(false);
       } catch (caught) {
@@ -64,7 +64,7 @@ export function ConnectScreen(): ReactNode {
   const confirm = (): void => {
     if (!preview) return;
     pair(walletFromXpubMessage(preview), preview.chainId);
-    show('已导入 xpub');
+    show('已导入登录二维码');
     navigate({ name: 'home' });
   };
 
@@ -76,7 +76,7 @@ export function ConnectScreen(): ReactNode {
         {!preview ? (
           <>
             <Alert tone="info" title="在离线手机上">
-              打开 NetProof Air →「导出 xpub · 供插件钱包扫码登录」，然后把手机的动画二维码对准这个摄像头。
+              打开 NetProof Air →「登录插件钱包」，把手机上的二维码对准这个摄像头。
             </Alert>
             <CameraPanel
               videoRef={videoRef}

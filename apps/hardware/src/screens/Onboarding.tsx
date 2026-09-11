@@ -11,7 +11,8 @@ import {
   PasswordMeter,
 } from '../components/primitives';
 import { MnemonicGrid, MnemonicQuiz } from '../components/Mnemonic';
-import { GearIcon, ShieldIcon } from '../components/icons';
+import { ShieldIcon } from '../components/icons';
+import { DeviceMenu } from '../components/DeviceMenu';
 import { useSession } from '../state/session';
 
 /**
@@ -40,14 +41,9 @@ export function WelcomeScreen({
   return (
     <div className="np-fullscreen">
       <div className="np-fullscreen__top">
-        <button
-          type="button"
-          className="np-icon-btn np-icon-btn--plain"
-          onClick={onDiagnostics}
-          aria-label="设置"
-        >
-          <GearIcon size={22} />
-        </button>
+        {/* Three dots, like every other top-right control. No lock entry: nothing is
+            unlocked yet, so "lock the device" would be a dead item. */}
+        <DeviceMenu onSettings={onDiagnostics} />
       </div>
 
       <div className="np-fullscreen__body">
@@ -109,18 +105,6 @@ export function BackupScreen({
               这是你资产的唯一凭证。任何拿到这串单词的人都能转走全部资金。设备不会上传，也不会有第二份。
             </Alert>
             <MnemonicGrid words={words} hidden={!revealed} onReveal={() => setRevealed(true)} />
-            <div className="np-card np-card--sunken">
-              <div className="np-label">生成来源</div>
-              <div className="np-body np-body--tight" style={{ marginTop: 6 }}>
-                {entropy.sources
-                  .filter((source) => source.estimatedMinEntropyBits > 0)
-                  .map((source) => `${source.name} (${source.estimatedMinEntropyBits.toFixed(0)} bit)`)
-                  .join(' + ')}
-              </div>
-              <div className="np-mono np-ink-3" style={{ marginTop: 8 }}>
-                审计摘要 {entropy.transcriptDigest.slice(0, 32)}…
-              </div>
-            </div>
           </>
         ) : (
           <MnemonicQuiz words={words} onPassed={onNext} />
@@ -131,7 +115,8 @@ export function BackupScreen({
           <Button block disabled={!revealed} onClick={() => setStep('quiz')}>
             我已抄写完毕
           </Button>
-          {!revealed ? <div className="np-body np-body--tight np-center">请先点击显示助记词</div> : null}
+          {/* Always rendered, so revealing the words never moves the button. */}
+          <div className="np-hint-slot">{revealed ? '' : '请先点击显示助记词'}</div>
         </div>
       ) : null}
     </>

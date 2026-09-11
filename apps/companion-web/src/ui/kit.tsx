@@ -254,6 +254,30 @@ export function QrDisplay({
   );
 }
 
+/**
+ * How long a scan may fail before it starts trying harder.
+ *
+ * `dontInvert` is half the work of `attemptBoth` and is right for the dark-on-light codes
+ * both apps display. If nothing at all has decoded after a few seconds, the cheap
+ * assumption is what is failing — a reflective screen can invert a code's apparent
+ * polarity — and "cannot scan it" is worse than a decode that costs twice as much.
+ */
+const ROBUST_DECODE_AFTER_MS = 4000;
+
+/**
+ * What the user is being asked to point the camera at, in their words.
+ *
+ * The protocol names — NP-XPUB, NP-REQ, NP-SIG — are for the wire. Showing them here told
+ * the user to "aim at the NP-XPUB QR code", which is a name they have never seen anywhere
+ * in either app: the device calls this button 「登录插件钱包」.
+ */
+const SCAN_HINT: Record<'NP-XPUB' | 'NP-SIG' | 'NP-REQ' | 'NP-ACK', string> = {
+  'NP-XPUB': '登录',
+  'NP-REQ': '签名请求',
+  'NP-SIG': '签名结果',
+  'NP-ACK': '确认',
+};
+
 export interface ScanState {
   decoded: number;
   rejected: number;
@@ -291,6 +315,7 @@ export function useQrScanner(options: {
     let stream: MediaStream | null = null;
     let frameHandle = 0;
     let stopped = false;
+    const openedAt = Date.now();
     let lastScanAt = 0;
     let lastText = '';
     let lastTextAt = 0;
@@ -324,7 +349,10 @@ export function useQrScanner(options: {
         480,
       );
       const image = context.getImageData(0, 0, 480, 480);
-      const result = jsQR(image.data, image.width, image.height, { inversionAttempts: 'dontInvert' });
+      const robust = decoded === 0 && Date.now() - openedAt > ROBUST_DECODE_AFTER_MS;
+      const result = jsQR(image.data, image.width, image.height, {
+        inversionAttempts: robust ? 'attemptBoth' : 'dontInvert',
+      });
       if (!result || result.data.length === 0) return;
       if (result.data === lastText && now - lastTextAt < 900) return;
       lastText = result.data;
@@ -336,19 +364,43 @@ export function useQrScanner(options: {
 
     void (async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
+        const opened = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false,
         });
+        // React StrictMode runs this effect twice, and leaving the screen while the
+        // permission prompt is open cancels it for real. Bail out *before* touching the
+        // element, or the first attempt assigns its stream over the second attempt's and
+        // leaves a camera running that nothing is reading from.
+        if (stopped) {
+          for (const track of opened.getTracks()) track.stop();
+          return;
+        }
+        stream = opened;
         const video = videoRef.current;
-        if (!video) return;
-        video.srcObject = stream;
+        if (!video) {
+          for (const track of opened.getTracks()) track.stop();
+          return;
+        }
+        video.srcObject = opened;
         video.muted = true;
         video.playsInline = true;
-        await video.play();
-        setState((previous) => ({ ...previous, hint: `请对准 ${expectedType} 二维码` }));
+        try {
+          await video.play();
+        } catch (caught) {
+          // Assigning srcObject again interrupts a pending play() with an AbortError.
+          // That is what our own cancelled attempt looks like, not a camera failure —
+          // and it was being reported to the user as "无法打开摄像头" on a working camera.
+          if ((caught as { name?: string }).name !== 'AbortError') throw caught;
+        }
+        if (stopped || video.srcObject !== opened) return;
+        // Starting is retryable, so a previous failure must not outlive it: the panel
+        // used to keep showing "无法打开摄像头" over a working preview.
+        setError(null);
+        setState((previous) => ({ ...previous, hint: `请对准${SCAN_HINT[expectedType]}二维码` }));
         frameHandle = requestAnimationFrame(tick);
       } catch (caught) {
+        if (stopped) return;
         const name = (caught as { name?: string }).name;
         setError(
           name === 'NotAllowedError'
@@ -362,7 +414,9 @@ export function useQrScanner(options: {
       stopped = true;
       cancelAnimationFrame(frameHandle);
       for (const track of stream?.getTracks() ?? []) track.stop();
-      if (videoRef.current) videoRef.current.srcObject = null;
+      // Never clear a stream this attempt does not own: a newer mount may already be
+      // showing one.
+      if (videoRef.current && videoRef.current.srcObject === stream) videoRef.current.srcObject = null;
     };
   }, [active, expectedType]);
 

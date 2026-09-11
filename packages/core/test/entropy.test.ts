@@ -266,6 +266,68 @@ describe('CameraNoiseCollector', () => {
     }
   });
 
+  it('does not flicker the stall verdict on a sensor that is merely uneven', () => {
+    // A real symptom, not a hypothetical. The verdict is derived per frame, and a frame
+    // can legitimately earn no *marginal* credit — a repeated frame from a camera that
+    // delivers 30fps into a 60Hz sampling loop, or runs that debiasing discards. The
+    // capture screen consumed this flag for both its hint and its finish button, so an
+    // uneven sensor made the button jump several times a second under the user's thumb.
+    const healthy = capture({ frameCount: 30 });
+    const dead = degenerateFrames(6, 96 * 96);
+    // Interleaved so that the raw signal fires repeatedly but never sustains.
+    const sequence = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].flatMap((i) => [
+      healthy[i]!,
+      dead[0]!,
+      healthy[i + 1]!,
+      dead[1]!,
+      dead[2]!,
+      healthy[i + 2]!,
+    ]);
+
+    const collector = new CameraNoiseCollector({ minFrames: 3, minDurationMs: 0 });
+    let streak = 0;
+    let longest = 0;
+    let fired = 0;
+    for (const frame of sequence) {
+      const raw = collector.addFrame(frame).stalled;
+      streak = raw ? streak + 1 : 0;
+      if (raw) fired += 1;
+      longest = Math.max(longest, streak);
+      expect(collector.stats().lastFrameStalled).toBe(false);
+    }
+
+    // Guard against the test quietly becoming vacuous if the synthetic data changes: the
+    // per-frame signal must really be flickering while never reaching the verdict.
+    expect(fired, 'the raw per-frame signal must fire').toBeGreaterThan(0);
+    expect(longest, 'and must never sustain long enough to be a verdict').toBeLessThan(3);
+  });
+
+  it('still declares a genuinely frozen sensor dead, after the debounce', () => {
+    const collector = new CameraNoiseCollector({ minFrames: 2, minDurationMs: 0 });
+    const frozen = degenerateFrames(2, 1024)[0]!;
+    collector.addFrame(frozen);
+    // One frame is not yet evidence; the verdict needs frames to agree.
+    expect(collector.stats().lastFrameStalled).toBe(false);
+    for (let i = 0; i < 3; i++) collector.addFrame(frozen);
+    expect(collector.stats().lastFrameStalled).toBe(true);
+  });
+
+  it('reports blockers as data, not only as prose', () => {
+    // A UI cannot render the prose: it embeds live counters (so it re-wraps every
+    // frame) and it is English. Structure lets the screen localise and shorten it.
+    const collector = new CameraNoiseCollector({ requiredBits: 4096, minFrames: 20, minDurationMs: 0 });
+    for (const frame of capture({ frameCount: 5 })) collector.addFrame(frame);
+
+    const blockers = collector.blockers();
+    expect(blockers).toContainEqual({ code: 'frames', have: 5, need: 20 });
+    expect(blockers.map((b) => b.code)).toContain('entropy');
+    expect(blockers.map((b) => b.code)).not.toContain('duration');
+
+    // The prose stays for error messages, and stays in step with the data.
+    expect(collector.blockingReasons()).toHaveLength(blockers.length);
+    expect(collector.blockingReasons().join(' ')).toMatch(/at least 20 frames/);
+  });
+
   it('refuses to create a wallet from too few frames', () => {
     const collector = new CameraNoiseCollector({ minFrames: 20, minDurationMs: 0 });
     for (const frame of capture({ frameCount: 5 })) collector.addFrame(frame);

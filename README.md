@@ -41,14 +41,13 @@
 **气隙是操作系统保证的，不是承诺。** Android 清单里**没有** `INTERNET` 权限，页面 CSP 禁止外连，
 网络配置拒绝明文传输。离线不是"我们不会联网"，而是"联不上网"。
 
-首页显示的**不是**程序检测出来的"你联网了"，而是三件可以被你独立验证的事：
+设备界面显示的**不是**程序检测出来的"你联网了"，而是可以被你独立验证的事实：
+APK 未声明 `android.permission.INTERNET`——你可以用
+`aapt2 dump permissions netproof-air-0.1.0.apk` 自己核对。设备也申请了 `CAMERA`，
+仅此而已（早先版本还申请 `ACCESS_NETWORK_STATE` 用来判断飞行模式；那个功能已经删掉，
+权限也一并删掉，不再持有无用途的权限）。
 
-1. 系统报告的网络状态（并注明：这个值依赖 `ACCESS_NETWORK_STATE` 权限，缺了它会恒为"可用"）；
-2. APK 未声明 `android.permission.INTERNET`——你可以用
-   `aapt2 dump permissions netproof-air-0.1.0.apk` 自己核对；
-3. 由**你**手动确认飞行模式已开启，并记录确认时间。
-
-程序无法可靠地替你判断是否断网，所以它不假装能判断。
+程序无法可靠地替你判断是否断网，所以它不假装能判断，也不提示你开飞行模式。
 
 **设备上显示什么，就签什么。** 离线设备独立解码交易、展示解析后的调用内容与风险提示，再从**显示过的字段**
 重新序列化并签名。插件随后用同一个哈希独立校验签名。
@@ -58,7 +57,7 @@
 ```bash
 pnpm install
 
-pnpm test              # 191 个测试
+pnpm test              # 267 个测试
 pnpm typecheck         # 六个包全部类型检查
 pnpm verify            # typecheck + test + 三个 app 构建
 
@@ -68,7 +67,7 @@ pnpm dev:hardware      # 离线设备界面 → http://localhost:5173（localhos
 
 一条命令验证完整流程（单机即可，不需要第二台设备）：开两个浏览器窗口，
 一个跑 `dev:hardware`（扮演离线手机），一个跑 `dev:companion`。
-在设备窗口创建钱包 → 导出 xpub → 用伴侣窗口扫码导入 → 在伴侣窗口的「dApp 测试台」发起一笔交易 →
+在设备窗口创建钱包 → 点「登录插件钱包」→ 用伴侣窗口扫这个二维码导入 → 在伴侣窗口的「dApp 测试台」发起一笔交易 →
 切回设备窗口扫它的二维码并确认 → 切回伴侣窗口扫签名结果。
 
 ### 安装 APK
@@ -95,7 +94,7 @@ pnpm apk
 package: io.netproof.air
 minSdkVersion: 24   targetSdkVersion: 36
 uses-permission: android.permission.CAMERA          ← 熵源必需
-（没有 INTERNET / ACCESS_NETWORK_STATE / ACCESS_WIFI_STATE）
+（没有 INTERNET / ACCESS_NETWORK_STATE / ACCESS_WIFI_STATE——只申请了 CAMERA，多一个都不申请）
 allowBackup=false  usesCleartextTraffic=false  networkSecurityConfig=已设置
 debuggable: 未设置（release 构建）
 ```
@@ -106,6 +105,16 @@ debuggable: 未设置（release 构建）
 > 如果将来某个 Capacitor 版本改变行为，症状会是**白屏**而不是网络错误，这时把
 > `apps/hardware/android/app/src/main/AndroidManifest.xml` 末尾注释掉的 `INTERNET` 权限恢复即可
 > （但要明白，这会把"联不上网"降级成"不会联网"）。
+
+### 旧手机兼容性
+
+目标是**永久断网的旧安卓手机**：它不会联网，所以永远收不到 Play 商店的 WebView 更新，
+WebView 版本停在出厂状态。构建下限因此是 **WebView 67**——再低就没有 `BigInt`，
+而钱包的全部金额运算都靠它，且 `BigInt` 没有 polyfill。
+
+比 67 新的语法由 esbuild 降级，运行时 API 由 `apps/hardware/public/compat.js`（ES5 经典脚本，
+在 bundle 之前加载）补齐，flexbox `gap` 与 `aspect-ratio` 这类无法打补丁的 CSS 特性在运行时探测后走
+降级规则。完整清单与验证方式见 [`docs/COMPAT.md`](docs/COMPAT.md)。
 
 ### 加载 Chrome 插件（可选）
 

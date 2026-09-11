@@ -6,6 +6,7 @@
   "description": "Shared design system: OKX-inspired bright, high-contrast tokens and components for both apps.",
   "exports": {
     ".": "./src/tokens.ts",
+    "./networks": "./src/networks.ts",
     "./theme.css": "./src/theme.css"
   },
   "files": ["src"],

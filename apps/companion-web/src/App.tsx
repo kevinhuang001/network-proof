@@ -23,6 +23,7 @@ import {
 } from './lib/store';
 import { Alert, Badge, Button, Spinner, Toast, shortAddress, useToast } from './ui/kit';
 import { BrandMark } from './ui/brand';
+import { ChainLogo } from './ui/icons';
 import { ConnectScreen } from './screens/Connect';
 import { StartScreen } from './screens/Start';
 import { SignScreen } from './screens/Sign';
@@ -274,7 +275,11 @@ function Shell(): ReactNode {
   // the whole app. Settings remains reachable because the RPC endpoint may need
   // setting before a device is ever connected.
   if (!wallet && route.name !== 'settings' && route.name !== 'connect') {
-    return <StartScreen />;
+    return (
+      <div className="np-app">
+        <StartScreen />
+      </div>
+    );
   }
 
   return (
@@ -333,15 +338,9 @@ function TopBar(): ReactNode {
           className="np-chip"
           onClick={() => setOpenMenu(openMenu === 'network' ? null : 'network')}
         >
-          <span
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: 999,
-              background: 'var(--np-up)',
-              display: 'inline-block',
-            }}
-          />
+          {/* The chain's real logo, not a coloured dot: in the one control the user
+              checks before signing, "a green dot" identifies nothing. */}
+          <ChainLogo chainId={settings.chainId} size={18} />
           {chainLabel(settings.chainId)}
           <span style={{ opacity: 0.5 }}>▾</span>
         </button>

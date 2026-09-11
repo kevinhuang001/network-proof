@@ -1,5 +1,5 @@
 import { NetProofError } from '../errors';
-import { concat, fromHex, toHex, utf8 } from '../util/bytes';
+import { concat, fromHex, hasOwn, toHex, utf8 } from '../util/bytes';
 
 /**
  * Minimal deterministic CBOR (RFC 8949) codec for the air-gap wire format.
@@ -175,7 +175,7 @@ class CborReader {
           if (typeof key !== 'string') {
             throw new NetProofError('CBOR_INVALID', 'only text keys are supported in CBOR maps');
           }
-          if (Object.hasOwn(out, key)) {
+          if (hasOwn(out, key)) {
             throw new NetProofError('CBOR_INVALID', `duplicate CBOR map key: ${key}`);
           }
           out[key] = this.readValue();

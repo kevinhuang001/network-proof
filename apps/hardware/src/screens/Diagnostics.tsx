@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { Alert, Button, Header } from '../components/primitives';
+import { QR_PRESET_ORDER } from '../lib/qrPresets';
 import { useSession } from '../state/session';
 
 /**
@@ -13,11 +14,9 @@ import { useSession } from '../state/session';
 export function DiagnosticsScreen({
   onBack,
   onWipe,
-  onLock,
 }: {
   onBack: () => void;
   onWipe: () => void;
-  onLock: () => void;
 }): ReactNode {
   const { settings, updateSettings, wipe } = useSession();
   const [confirmWipe, setConfirmWipe] = useState(false);
@@ -30,32 +29,31 @@ export function DiagnosticsScreen({
         <div className="np-card">
           <div className="np-label">扫码速度</div>
           <div className="np-chip-row" style={{ marginTop: 10 }}>
-            {[
-              { label: '稳健', value: 200, duration: 520 },
-              { label: '均衡', value: 300, duration: 420 },
-              { label: '快速', value: 500, duration: 320 },
-            ].map((preset) => (
+            {QR_PRESET_ORDER.map(({ label, preset }) => (
               <button
-                key={preset.label}
+                key={label}
                 type="button"
                 className={`np-chip${
-                  settings.qrFragmentLength === preset.value ? ' np-chip--active' : ''
+                  settings.qrFragmentLength === preset.fragmentLength ? ' np-chip--active' : ''
                 }`}
                 onClick={() =>
-                  updateSettings({ qrFragmentLength: preset.value, qrFrameDurationMs: preset.duration })
+                  updateSettings({
+                    qrFragmentLength: preset.fragmentLength,
+                    qrFrameDurationMs: preset.frameDurationMs,
+                  })
                 }
               >
-                {preset.label}
+                {label}
               </button>
             ))}
           </div>
           <div className="np-body np-body--tight" style={{ marginTop: 8 }}>
-            扫不上就换「稳健」。
+            扫不上会自动切到「稳健」。
           </div>
         </div>
 
         <div className="np-card">
-          <div className="np-label">Solana 地址数量</div>
+          <div className="np-label">Solana 默认登录派生数量</div>
           <div className="np-chip-row" style={{ marginTop: 10 }}>
             {[5, 10, 20].map((count) => (
               <button
@@ -69,13 +67,9 @@ export function DiagnosticsScreen({
             ))}
           </div>
           <div className="np-body np-body--tight" style={{ marginTop: 8 }}>
-            Solana 没有可观察的账户公钥，所以导出的是地址本身。
+            Solana 没有可观察的账户公钥，导出的是地址本身，这里定登录时导出几个。
           </div>
         </div>
-
-        <Button block variant="secondary" onClick={onLock}>
-          锁定设备
-        </Button>
 
         <div className="np-card">
           <div className="np-label">危险操作</div>

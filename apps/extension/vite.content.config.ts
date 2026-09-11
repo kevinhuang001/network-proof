@@ -19,7 +19,8 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       emptyOutDir: false,
-      target: 'es2022',
+      target: 'chrome67',
+
       lib: {
         entry: resolve(__dirname, isBridge ? 'src/content/bridge.ts' : 'src/content/inject.ts'),
         formats: ['iife'],

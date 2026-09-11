@@ -290,8 +290,7 @@ export function HomeScreen(): ReactNode {
 
       {solana ? (
         <Alert tone="info">
-          Solana 的派生路径是硬化的，没有可观察的账户公钥，所以这些地址由设备直接给出。
-          添加 Solana 代币与发送交易尚未实现。
+          Solana 没有可观察的账户公钥，所以设备导出的是地址本身。发送交易尚未实现。
         </Alert>
       ) : null}
 

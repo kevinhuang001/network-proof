@@ -12,6 +12,7 @@ import { isGatingFailure, runHealthTests } from './health';
 import type {
   CollectorOptions,
   CollectorStats,
+  EntropyBlocker,
   EntropyResult,
   EntropySourceReport,
   GrayscaleFrame,
@@ -34,6 +35,17 @@ const DEFAULT_BITS_PER_DEBIASED_BIT = 0.05;
  * 640 bits the block-frequency test needs.
  */
 const TEST_SAMPLE_SLOTS = 64;
+
+/**
+ * Frames of agreement before the stall verdict changes, in either direction.
+ *
+ * Three frames is ~100ms at the capture screen's 33ms interval: long enough to ignore
+ * a frame that merely earned no marginal credit, short enough that covering the lens
+ * is still reported while the user is looking at the screen.
+ */
+const STALL_ENTER_FRAMES = 3;
+const STALL_EXIT_FRAMES = 3;
+
 /**
  * Fixed size of the battery sample: 64 slots x 128 frames.
  *
@@ -117,6 +129,8 @@ export class CameraNoiseCollector {
   private totalPixelsConsidered = 0;
   private totalOnes = 0;
   private lastStalled = false;
+  private stalledStreak = 0;
+  private creditedStreak = 0;
   private startedAt: number | null = null;
   private lastTimestamp: number | null = null;
   private readonly modeStats: { readNoise: ModeStats; quantization: ModeStats } = {
@@ -266,7 +280,20 @@ export class CameraNoiseCollector {
     // on a quantization-limited sensor still emits a full frame of Mode A bits,
     // but they are all zeros, so the measured min-entropy credit is exactly zero.
     const stalled = credited <= 0 || considered < Math.max(64, framePixels * 0.01);
-    this.lastStalled = stalled;
+    // Debounced in both directions, because this per-frame signal flickers: a healthy
+    // sensor can earn zero *marginal* credit on a frame whose runs debiasing discarded,
+    // and one such frame used to disable the finish button and hide the hint — up to
+    // thirty times a second, so the button visibly jumped. A covered lens reports every
+    // frame as dead, so nothing is lost in detection.
+    if (stalled) {
+      this.stalledStreak += 1;
+      this.creditedStreak = 0;
+    } else {
+      this.creditedStreak += 1;
+      this.stalledStreak = 0;
+    }
+    if (!this.lastStalled && this.stalledStreak >= STALL_ENTER_FRAMES) this.lastStalled = true;
+    else if (this.lastStalled && this.creditedStreak >= STALL_EXIT_FRAMES) this.lastStalled = false;
 
     const radixOnes = countOnes(readNoiseDebiased.bits) + countOnes(quantizationDebiased.bits);
     this.totalPixelsConsidered += debiasedBits.length;
@@ -359,27 +386,52 @@ export class CameraNoiseCollector {
     };
   }
 
-  /** Reasons we cannot yet produce a wallet seed; empty means ready. */
-  blockingReasons(): string[] {
+  /**
+   * Why we cannot yet produce a wallet seed, as data; empty means the capture is
+   * complete and `finalize()` will succeed.
+   *
+   * Callers that render these must be aware that `have`/`haveBits`/`haveMs` change on
+   * every frame. Render them in a slot whose *size* does not depend on the text.
+   */
+  blockers(): EntropyBlocker[] {
     const stats = this.stats();
-    const reasons: string[] = [];
+    const blockers: EntropyBlocker[] = [];
     if (this.frameCount < this.minFrames) {
-      reasons.push(`need at least ${this.minFrames} frames (have ${this.frameCount})`);
+      blockers.push({ code: 'frames', have: this.frameCount, need: this.minFrames });
     }
     if (stats.durationMs < this.minDurationMs) {
-      reasons.push(
-        `capture must last at least ${this.minDurationMs}ms (have ${Math.round(stats.durationMs)}ms)`,
-      );
+      blockers.push({ code: 'duration', haveMs: Math.round(stats.durationMs), needMs: this.minDurationMs });
     }
     if (stats.estimatedMinEntropyBits < this.requiredBits) {
-      reasons.push(
-        `need ${this.requiredBits} bits of camera entropy (have ${stats.estimatedMinEntropyBits.toFixed(1)})`,
-      );
+      blockers.push({
+        code: 'entropy',
+        haveBits: stats.estimatedMinEntropyBits,
+        needBits: this.requiredBits,
+      });
     }
-    if (this.lastStalled) {
-      reasons.push('camera appears frozen or covered — move the phone slightly');
-    }
-    return reasons;
+    if (this.lastStalled) blockers.push({ code: 'stalled' });
+    return blockers;
+  }
+
+  /**
+   * The same blockers as English prose, for error messages and logs — never for a UI.
+   *
+   * The text embeds live numbers, so it changes length every frame; a screen that
+   * printed it under a button moved that button up and down as the numbers grew.
+   */
+  blockingReasons(): string[] {
+    return this.blockers().map((blocker) => {
+      switch (blocker.code) {
+        case 'frames':
+          return `need at least ${blocker.need} frames (have ${blocker.have})`;
+        case 'duration':
+          return `capture must last at least ${blocker.needMs}ms (have ${blocker.haveMs}ms)`;
+        case 'entropy':
+          return `need ${blocker.needBits} bits of camera entropy (have ${blocker.haveBits.toFixed(1)})`;
+        case 'stalled':
+          return 'camera appears frozen or covered — move the phone slightly';
+      }
+    });
   }
 
   /**
@@ -555,6 +607,8 @@ export class CameraNoiseCollector {
     this.totalPixelsConsidered = 0;
     this.totalOnes = 0;
     this.lastStalled = false;
+    this.stalledStreak = 0;
+    this.creditedStreak = 0;
     this.startedAt = null;
     this.lastTimestamp = null;
     this.modeStats.readNoise = { bits: 0, ones: 0, rawBits: 0 };

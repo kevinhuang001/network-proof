@@ -25,7 +25,9 @@ export default defineConfig({
   plugins: [react()],
   // Served as a plain static site, so assets must be relative.
   base: './',
-  build: { outDir: 'dist', target: 'es2022' },
+  // Build floor: Chrome/WebView 67 — the oldest version with BigInt, which the wallet's
+  // arithmetic needs and no polyfill can provide. See apps/hardware/public/compat.js.
+  build: { outDir: 'dist', target: 'chrome67' },
   server: {
     host: true,
     port: Number(process.env.NP_PORT ?? 5174),

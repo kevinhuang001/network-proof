@@ -166,10 +166,12 @@ if [ -x "$BUILD_TOOLS_DIR/aapt2" ]; then
   PERMS="$("$BUILD_TOOLS_DIR/aapt2" dump permissions "$APK" 2>/dev/null)"
   echo "$PERMS" | grep -q "android.permission.CAMERA" \
     || { log "APK is missing the CAMERA permission (needed for the entropy source)"; exit 1; }
-  # ACCESS_NETWORK_STATE is a read-only connectivity query: no socket, no transfer.
-  # It exists so the app can report network state honestly instead of guessing.
-  echo "$PERMS" | grep -q "android.permission.ACCESS_NETWORK_STATE" \
-    || log "note: ACCESS_NETWORK_STATE absent — the in-app network status will read 'online' always"
+  # ACCESS_NETWORK_STATE is deliberately NOT requested any more. It is only a read-only
+  # connectivity query, but the app no longer asks the OS anything about the network, so
+  # holding it would be privilege without purpose.
+  if echo "$PERMS" | grep -q "android.permission.ACCESS_NETWORK_STATE"; then
+    log "note: ACCESS_NETWORK_STATE is present but the app no longer reads connectivity"
+  fi
   if echo "$PERMS" | grep -q "android.permission.INTERNET"; then
     log "FAILED: the APK declares INTERNET — the air gap is no longer OS-enforced"
     exit 1

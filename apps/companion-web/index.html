@@ -18,6 +18,12 @@
   </head>
   <body>
     <div id="root"></div>
+    <!--
+      Loader-level compatibility floor. A classic script, not a module, and not passed
+      through the bundler, so it is guaranteed to run before the app on any WebView.
+      See public/compat.js for why the target is WebView 67.
+    -->
+    <script src="./compat.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

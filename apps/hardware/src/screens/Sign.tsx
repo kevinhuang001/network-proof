@@ -30,6 +30,9 @@ import type {
 } from '@netproof/core';
 import { Alert, Badge, Button, Header, KeyValue, PasswordField, haptic } from '../components/primitives';
 import { CameraStage, QrDisplay } from '../components/QrDisplay';
+import { isAbortError } from '../lib/camera';
+import { ROBUST_FALLBACK_MS } from '../lib/qrPresets';
+import { useRobustQrFallback } from '../lib/useRobustQrFallback';
 import { startQrScan } from '../lib/scanner';
 import type { ScanHandle } from '../lib/scanner';
 import { useSession } from '../state/session';
@@ -59,11 +62,15 @@ export function ScanRequestScreen({
   useEffect(() => {
     if (!started) return;
     let cancelled = false;
+    // See CaptureScreen: StrictMode runs this effect twice, and both runs used to leave
+    // a second camera stream open. The controller cancels the first cleanly.
+    const controller = new AbortController();
     void (async () => {
       try {
         const handle = await startQrScan({
           video: videoRef.current!,
           expectedType: 'NP-REQ',
+          signal: controller.signal,
           onProgress: (next) => {
             if (!cancelled) setProgress(next);
           },
@@ -89,11 +96,13 @@ export function ScanRequestScreen({
         }
         scanRef.current = handle;
       } catch (caught) {
-        if (!cancelled) setError((caught as Error).message);
+        // An interrupted start is our own shutdown, not a camera failure.
+        if (!cancelled && !isAbortError(caught)) setError((caught as Error).message);
       }
     })();
     return () => {
       cancelled = true;
+      controller.abort();
       scanRef.current?.stop();
       scanRef.current = null;
     };
@@ -109,7 +118,7 @@ export function ScanRequestScreen({
           <>
             <h2 className="np-headline">扫描插件钱包的二维码</h2>
             <p className="np-body">
-              在插件钱包里发起交易或签名请求，它会显示一个动画二维码。用这台离线设备扫描它，
+              在插件钱包里发起交易或签名请求，它会显示一个二维码。用这台离线设备扫描它，
               请求内容只会停留在本机，不会经过任何网络。
             </p>
             <Alert tone="info" title="断网确认">
@@ -409,9 +418,15 @@ export function SignatureScreen({
   onDone: () => void;
 }): ReactNode {
   const { settings, wallet } = useSession();
+  // Same fallback as the login code, with a shorter fuse: by the time a signature is on
+  // screen the user is already holding the phone over it, so silence means trouble.
+  const scanSpeed = useRobustQrFallback(true, ROBUST_FALLBACK_MS.signature, {
+    fragmentLength: settings.qrFragmentLength,
+    frameDurationMs: settings.qrFrameDurationMs,
+  });
   const frames = useMemo(
-    () => framesForMessage('NP-SIG', response, settings.qrFragmentLength).frames,
-    [response, settings.qrFragmentLength],
+    () => framesForMessage('NP-SIG', response, scanSpeed.preset.fragmentLength).frames,
+    [response, scanSpeed.preset.fragmentLength],
   );
 
   return (
@@ -420,8 +435,8 @@ export function SignatureScreen({
       <div className="np-main">
         <QrDisplay
           frames={frames}
-          frameDurationMs={settings.qrFrameDurationMs}
-          caption="让插件钱包扫描取回签名"
+          frameDurationMs={scanSpeed.preset.frameDurationMs}
+          caption={scanSpeed.downgraded ? '已切到稳健速度 · 让插件钱包扫描取回签名' : '让插件钱包扫描取回签名'}
         />
         <div className="np-card">
           <KeyValue

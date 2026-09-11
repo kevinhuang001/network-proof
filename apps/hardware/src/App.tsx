@@ -56,7 +56,15 @@ type Route =
 export function App(): ReactNode {
   return (
     <SessionProvider>
-      <Router />
+      {/*
+        One wrapper for every screen.
+        Previously each screen decided for itself, and all but the welcome and unlock
+        screens forgot — so on a desktop browser the device stretched to the full
+        window width. The constraint belongs in one place, not in fourteen.
+      */}
+      <div className="np-app">
+        <Router />
+      </div>
     </SessionProvider>
   );
 }
@@ -159,6 +167,10 @@ function Router(): ReactNode {
           onOpenWallet={(id) => go({ name: 'wallet', id })}
           onManage={() => go({ name: 'wallets' })}
           onSettings={() => go({ name: 'diagnostics' })}
+          onLock={() => {
+            session.lock();
+            go({ name: 'welcome' });
+          }}
         />
       );
 
@@ -172,6 +184,11 @@ function Router(): ReactNode {
           onBack={() => go({ name: 'device' })}
           onLogin={() => go({ name: 'login-qr' })}
           onSign={() => go({ name: 'scan' })}
+          onSettings={() => go({ name: 'diagnostics' })}
+          onLock={() => {
+            session.lock();
+            go({ name: 'welcome' });
+          }}
         />
       );
 
@@ -285,16 +302,12 @@ function Router(): ReactNode {
         <DiagnosticsScreen
           onBack={() => go(session.unlocked ? { name: 'device' } : { name: 'welcome' })}
           onWipe={() => go({ name: 'welcome' })}
-          onLock={() => {
-            session.lock();
-            go({ name: 'welcome' });
-          }}
         />
       );
 
     default:
       return (
-        <div className="np-app">
+        <>
           <Header title="出错了" />
           <div className="np-main">
             <Alert tone="danger">{error ?? '未知状态'}</Alert>
@@ -302,7 +315,7 @@ function Router(): ReactNode {
               回到首页
             </Button>
           </div>
-        </div>
+        </>
       );
   }
 }
@@ -313,7 +326,7 @@ function LockedNotice({ onUnlock, onHome }: { onUnlock: () => void; onHome: () =
       <Header title="设备已锁定" onBack={onHome} />
       <div className="np-main">
         <Alert tone="warn" title="需要先解锁">
-          签名与导出 xpub 都需要助记词在内存中。解锁后锁定按钮会立即清除它。
+          登录和签名都要用到助记词。锁定会立即清除它。
         </Alert>
       </div>
       <div className="np-footer">

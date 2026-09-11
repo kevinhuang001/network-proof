@@ -15,6 +15,7 @@ import {
 } from '@netproof/companion';
 import { useCompanion } from '../App';
 import { Alert, Badge, Button, CopyButton, Header, KeyValue, Toast, useToast } from '../ui/kit';
+import { ChainLogo, CheckIcon } from '../ui/icons';
 import { useVisibleAccounts } from './Wallet';
 
 /**
@@ -25,6 +26,16 @@ import { useVisibleAccounts } from './Wallet';
  * them keeps the wallet readable without removing the ability to inspect what it is
  * doing — which for a watch-only wallet over an air gap is the whole point.
  */
+
+/** Host-only summary of an endpoint, for the compact network rows. */
+function shortRpc(url: string | undefined): string {
+  if (!url) return '未设置节点';
+  try {
+    return new URL(url).host;
+  } catch {
+    return url.length > 34 ? `${url.slice(0, 34)}…` : url;
+  }
+}
 
 export function SettingsScreen(): ReactNode {
   const { settings, updateSettings, wallet, approvedOrigins, dropOrigin, unpair, navigate, activity, clearActivities } =
@@ -39,33 +50,58 @@ export function SettingsScreen(): ReactNode {
       <Header title="设置" onBack={() => navigate({ name: 'home' })} />
       <div className="np-main">
 
+      {/*
+        Network and RPC node in one card, because they are one decision. Choosing a chain
+        and choosing the endpoint that serves it were two cards a screen apart, which
+        meant the node field could show a URL for a chain the user was no longer on.
+      */}
       <div className="np-card">
-        <div className="np-label">网络</div>
-        <div className="np-chip-row" style={{ marginTop: 10 }}>
-          {CHAINS.map((chain) => (
-            <button
-              key={chain.chainId}
-              type="button"
-              className={`np-chip${draft.chainId === chain.chainId ? ' np-chip--active' : ''}`}
-              onClick={() => setDraft({ ...draft, chainId: chain.chainId })}
-            >
-              {chain.shortName}
-            </button>
-          ))}
+        <div className="np-label">网络与节点</div>
+        <div className="np-list" style={{ marginTop: 10, borderRadius: 14 }}>
+          {CHAINS.map((chain) => {
+            const active = draft.chainId === chain.chainId;
+            return (
+              <div key={chain.chainId} className="np-list__item np-list__item--static" style={{ gap: 12 }}>
+                <ChainLogo chainId={chain.chainId} size={26} />
+                <button
+                  type="button"
+                  className="np-grow"
+                  style={{
+                    background: 'none',
+                    border: 0,
+                    padding: 0,
+                    font: 'inherit',
+                    color: 'inherit',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => setDraft({ ...draft, chainId: chain.chainId })}
+                >
+                  <span className="np-subtitle">{chainLabel(chain.chainId)}</span>
+                  <div className="np-body np-body--tight np-mono" style={{ opacity: 0.7 }}>
+                    {shortRpc(draft.rpcUrls[chain.chainId])}
+                  </div>
+                </button>
+                {active ? <CheckIcon size={20} /> : null}
+              </div>
+            );
+          })}
         </div>
-      </div>
 
-      <div className="np-card">
-        <div className="np-label">RPC 节点（{chainLabel(draft.chainId)}）</div>
-        <input
-          className="np-input"
-          style={{ marginTop: 8 }}
-          value={draft.rpcUrls[draft.chainId] ?? ''}
-          placeholder="https://..."
-          onChange={(event) =>
-            setDraft({ ...draft, rpcUrls: { ...draft.rpcUrls, [draft.chainId]: event.target.value } })
-          }
-        />
+        <div className="np-field" style={{ marginTop: 14 }}>
+          <label className="np-label" htmlFor="rpc-url">
+            {chainLabel(draft.chainId)} 的 RPC 节点
+          </label>
+          <input
+            id="rpc-url"
+            className="np-input"
+            value={draft.rpcUrls[draft.chainId] ?? ''}
+            placeholder="https://..."
+            onChange={(event) =>
+              setDraft({ ...draft, rpcUrls: { ...draft.rpcUrls, [draft.chainId]: event.target.value } })
+            }
+          />
+        </div>
         <div className="np-body np-body--tight" style={{ marginTop: 8 }}>
           余额、nonce、gas 都来自这里。公共节点会看到你查询过的所有地址——在意隐私就换成自己的节点。
         </div>

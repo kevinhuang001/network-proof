@@ -21,7 +21,8 @@ export type NetProofErrorCode =
   | 'QR_DECODE_FAILED'
   | 'CBOR_INVALID'
   | 'PROTOCOL_INVALID'
-  | 'PROTOCOL_UNKNOWN_TYPE';
+  | 'PROTOCOL_UNKNOWN_TYPE'
+  | 'CSPRNG_UNAVAILABLE';
 
 export class NetProofError extends Error {
   readonly code: NetProofErrorCode;

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { networkLogoUrl } from '@netproof/ui/networks';
 
 /**
  * Inline SVG icons.
@@ -137,6 +138,41 @@ export function GearIcon({ size = 22, className }: IconProps): ReactNode {
   );
 }
 
+/** Padlock, for the lock action in the top-right menu. */
+export function LockIcon({ size = 24, className }: IconProps): ReactNode {
+  return (
+    <Svg size={size} className={className}>
+      <rect x="4.5" y="10.5" width="15" height="10" rx="2.6" />
+      <path d="M8.2 10.5V7.9a3.8 3.8 0 0 1 7.6 0v2.6" />
+    </Svg>
+  );
+}
+
+/** Right chevron, for rows that lead somewhere. */
+export function ChevronRightIcon({ size = 22, className }: IconProps): ReactNode {
+  return (
+    <Svg size={size} className={className}>
+      <path d="M9.5 5.5 16 12l-6.5 6.5" />
+    </Svg>
+  );
+}
+
+/**
+ * Kebab menu. Three dots, the shape every phone user already reads as "more".
+ *
+ * Drawn rather than typed: a '⋮' glyph renders at a different weight, width and vertical
+ * centre on every device, and this icon sits in the same slot as the app's other icons.
+ */
+export function MoreIcon({ size = 22, className }: IconProps): ReactNode {
+  return (
+    <Svg size={size} className={className}>
+      <circle cx="12" cy="5" r="1.85" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.85" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="19" r="1.85" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
 /** Back chevron. A glyph like '‹' renders at a different weight on every device. */
 export function ChevronLeftIcon({ size = 22, className }: IconProps): ReactNode {
   return (
@@ -166,34 +202,51 @@ export function LinkIcon({ size = 24, className }: IconProps): ReactNode {
   );
 }
 
-/** Per-chain badge for the network picker. */
-export function ChainBadge({ chainId, size = 28 }: { chainId: number; size?: number }): ReactNode {
-  const style = {
-    width: size,
-    height: size,
-    borderRadius: 999,
-    display: 'grid' as const,
-    placeItems: 'center' as const,
-    background: 'var(--np-bg-sunken)',
-    color: 'var(--np-ink)',
-  };
-  if (chainId === 501) {
+/**
+ * Real network logo, from the bundled asset set.
+ *
+ * This was a hand-drawn diamond for "some chain", a yellow circle with a `B` for BNB
+ * Chain and a Solana glyph — three approximations of trademarks, in a wallet whose whole
+ * job is to show the user which chain they are about to sign on. The actual logos are
+ * small files; there is no reason to redraw them.
+ */
+export function ChainLogo({
+  chainId,
+  size = 28,
+  className,
+}: {
+  chainId: number;
+  size?: number;
+  className?: string;
+}): ReactNode {
+  const url = networkLogoUrl(chainId);
+  if (!url) {
     return (
-      <span style={style}>
-        <SolIcon size={size * 0.62} />
-      </span>
-    );
-  }
-  if (chainId === 56) {
-    return (
-      <span style={{ ...style, background: '#F0B90B', color: '#1a1a1a' }}>
-        <span style={{ fontWeight: 800, fontSize: size * 0.42 }}>B</span>
+      <span
+        className={className}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: 999,
+          display: 'grid',
+          placeItems: 'center',
+          background: 'var(--np-bg-sunken)',
+          fontSize: size * 0.4,
+          fontWeight: 700,
+        }}
+      >
+        ?
       </span>
     );
   }
   return (
-    <span style={style}>
-      <EthIcon size={size * 0.6} />
-    </span>
+    <img
+      className={className}
+      src={url}
+      width={size}
+      height={size}
+      alt=""
+      style={{ width: size, height: size, display: 'block', flex: 'none' }}
+    />
   );
 }

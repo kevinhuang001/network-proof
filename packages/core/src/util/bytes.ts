@@ -1,4 +1,5 @@
 import { sha256 } from '@noble/hashes/sha2.js';
+import { NetProofError } from '../errors';
 
 export const encoder = new TextEncoder();
 export const decoder = new TextDecoder();
@@ -106,10 +107,28 @@ export function crc32(bytes: Uint8Array, seed = 0): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
+/**
+ * Own-property test that works on WebView 69.
+ *
+ * `Object.hasOwn` is WebView 93. The device app is aimed at an old, permanently offline
+ * phone, so a parse failure here would be a wallet that cannot read its own QR codes —
+ * on the one screen where the user has no alternative path.
+ */
+export function hasOwn(target: object, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(target, key);
+}
+
 /** Cryptographically strong random bytes from the host CSPRNG. */
 export function randomBytes(length: number): Uint8Array {
   const out = new Uint8Array(length);
-  globalThis.crypto.getRandomValues(out);
+  // `globalThis` is WebView 71; `self` and `window` cover everything older.
+  const host: { crypto?: Crypto } =
+    typeof globalThis !== 'undefined' ? globalThis : (Function('return this')() as { crypto?: Crypto });
+  const cryptoApi = host.crypto;
+  if (!cryptoApi?.getRandomValues) {
+    throw new NetProofError('CSPRNG_UNAVAILABLE', 'this environment has no CSPRNG');
+  }
+  cryptoApi.getRandomValues(out);
   return out;
 }
 

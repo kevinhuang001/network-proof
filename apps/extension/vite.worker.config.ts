@@ -12,7 +12,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: false,
-    target: 'es2022',
+    target: 'chrome67',
     lib: {
       entry: resolve(__dirname, 'src/background/index.ts'),
       formats: ['es'],
