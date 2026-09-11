@@ -14,6 +14,7 @@ import {
   Alert,
   Button,
   CameraPanel,
+  Header,
   KeyValue,
   shortAddress as short,
   useQrScanner,
@@ -73,8 +74,8 @@ export function ConnectScreen(): ReactNode {
 
   return (
     <>
+      <Header title="添加钱包" onBack={() => navigate({ name: 'home' })} />
       <div className="np-main">
-        <h2 className="np-headline">连接硬件钱包</h2>
 
         {!preview ? (
           <>
@@ -174,15 +175,11 @@ export function ConnectScreen(): ReactNode {
             <Button block onClick={confirm}>
               添加这个钱包
             </Button>
-            <Button variant="ghost" onClick={() => setPreview(null)}>
+            <Button variant="secondary" onClick={() => setPreview(null)}>
               重新扫描
             </Button>
           </>
-        ) : (
-          <Button variant="ghost" onClick={() => navigate({ name: 'home' })}>
-            返回总览
-          </Button>
-        )}
+        ) : null}
       </div>
     </>
   );

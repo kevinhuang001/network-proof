@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { AnchoredMenu } from '@netproof/ui/anchored-menu';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DEFAULT_SETTINGS,
   chainLabel,
@@ -33,7 +34,6 @@ import {
 } from './lib/store';
 import { verifyPasscode, type PasscodeRecord } from './lib/lock';
 import { Alert, Badge, Button, Spinner, Toast, useToast } from './ui/kit';
-import { BrandMark } from './ui/brand';
 import {
   ChainLogo,
   ChevronDownIcon,
@@ -45,6 +45,7 @@ import {
 import { ConnectScreen } from './screens/Connect';
 import { StartScreen } from './screens/Start';
 import { SignScreen } from './screens/Sign';
+import { AddressesScreen } from './screens/Addresses';
 import {
   ActivityScreen,
   AddTokenScreen,
@@ -56,7 +57,7 @@ import {
 import { SendScreen } from './screens/Send';
 import { LockScreen } from './screens/Lock';
 import { Switcher } from './screens/Switcher';
-import { AdvancedScreen, DeveloperScreen, SettingsScreen } from './screens/Settings';
+import { SettingsScreen } from './screens/Settings';
 
 /**
  * The companion wallet shell.
@@ -77,13 +78,12 @@ export type Route =
   /** One asset, and the screen where its send and receive buttons live. */
   | { name: 'asset'; asset: string; symbol: string; label: string }
   | { name: 'activity' }
+  | { name: 'addresses' }
   | { name: 'send'; token?: string }
   | { name: 'receive' }
   | { name: 'add-token' }
   | { name: 'sign'; id: string }
-  | { name: 'settings' }
-  | { name: 'advanced' }
-  | { name: 'developer' };
+  | { name: 'settings' };
 
 interface CompanionValue {
   /** The active wallet, or null when nothing is paired. */
@@ -129,6 +129,7 @@ function parseRoute(hash: string): Route {
   const path = hash.replace(/^#/u, '');
   if (path.startsWith('/connect')) return { name: 'connect' };
   if (path.startsWith('/activity')) return { name: 'activity' };
+  if (path.startsWith('/addresses')) return { name: 'addresses' };
   if (path.startsWith('/asset/')) {
     const [asset = 'native', symbol = '', label = ''] = path.slice('/asset/'.length).split('|');
     return { name: 'asset', asset, symbol, label };
@@ -140,8 +141,6 @@ function parseRoute(hash: string): Route {
   if (path.startsWith('/add-token')) return { name: 'add-token' };
   if (path.startsWith('/sign/')) return { name: 'sign', id: path.slice('/sign/'.length) };
   if (path.startsWith('/settings')) return { name: 'settings' };
-  if (path.startsWith('/advanced')) return { name: 'advanced' };
-  if (path.startsWith('/developer')) return { name: 'developer' };
   return { name: 'home' };
 }
 
@@ -455,6 +454,7 @@ function Shell(): ReactNode {
       {route.name === 'home' ? <HomeScreen /> : null}
       {route.name === 'connect' ? <ConnectScreen /> : null}
       {route.name === 'activity' ? <ActivityScreen /> : null}
+      {route.name === 'addresses' ? <AddressesScreen /> : null}
       {route.name === 'asset' ? (
         <AssetScreen asset={route.asset} symbol={route.symbol} label={route.label} />
       ) : null}
@@ -465,8 +465,6 @@ function Shell(): ReactNode {
       {route.name === 'add-token' ? <AddTokenScreen /> : null}
       {route.name === 'sign' ? <SignScreen id={route.id} /> : null}
       {route.name === 'settings' ? <SettingsScreen /> : null}
-      {route.name === 'advanced' ? <AdvancedScreen /> : null}
-      {route.name === 'developer' ? <DeveloperScreen /> : null}
     </div>
   );
 }
@@ -482,6 +480,7 @@ function TopBar(): ReactNode {
   const { settings, updateSettings, navigate, wallet, lock, show } = useCompanion();
   const [openMenu, setOpenMenu] = useState<'network' | 'account' | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const kebabRef = useRef<HTMLButtonElement | null>(null);
 
   const { accounts } = useVisibleAccounts();
   const current = accounts[settings.addressIndex] ?? accounts[0];
@@ -489,14 +488,6 @@ function TopBar(): ReactNode {
   return (
     <>
       <header className="np-header" style={{ gap: 8 }}>
-        <button
-          type="button"
-          className="np-icon-btn np-icon-btn--plain"
-          onClick={() => navigate({ name: 'home' })}
-          aria-label="回到钱包首页"
-        >
-          <BrandMark />
-        </button>
         <button
           type="button"
           className="np-chip"
@@ -523,9 +514,10 @@ function TopBar(): ReactNode {
           <ChevronDownIcon size={16} />
         </button>
 
-        {/* Same kebab, same corner, same two entries as the device's own menu. */}
+        {/* Same kebab, same corner, same entries as the device's own menu. */}
         <div className="np-menu">
           <button
+            ref={kebabRef}
             type="button"
             className="np-icon-btn np-icon-btn--plain"
             onClick={() => setMenuOpen((previous) => !previous)}
@@ -534,49 +526,48 @@ function TopBar(): ReactNode {
           >
             <MoreIcon size={22} />
           </button>
-          {menuOpen ? (
-            <>
-              <div className="np-menu__scrim" onClick={() => setMenuOpen(false)} />
-              <div className="np-menu__panel" role="menu">
-                <button
-                  type="button"
-                  className="np-menu__item"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    navigate({ name: 'activity' });
-                  }}
-                >
-                  <HistoryIcon size={18} />
-                  <span className="np-grow">交易历史</span>
-                </button>
-                <button
-                  type="button"
-                  className="np-menu__item"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    lock();
-                  }}
-                >
-                  <LockIcon size={18} />
-                  <span className="np-grow">锁定</span>
-                </button>
-                <button
-                  type="button"
-                  className="np-menu__item"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    navigate({ name: 'settings' });
-                  }}
-                >
-                  <GearIcon size={18} />
-                  <span className="np-grow">设置</span>
-                </button>
-              </div>
-            </>
-          ) : null}
+          <AnchoredMenu
+            open={menuOpen}
+            trigger={kebabRef}
+            onClose={() => setMenuOpen(false)}
+          >
+                    <button
+                      type="button"
+                      className="np-menu__item"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        navigate({ name: 'activity' });
+                      }}
+                    >
+                      <HistoryIcon size={18} />
+                      <span className="np-grow">交易历史</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="np-menu__item"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        lock();
+                      }}
+                    >
+                      <LockIcon size={18} />
+                      <span className="np-grow">锁定</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="np-menu__item"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        navigate({ name: 'settings' });
+                      }}
+                    >
+                      <GearIcon size={18} />
+                      <span className="np-grow">设置</span>
+                    </button>
+          </AnchoredMenu>
         </div>
       </header>
 

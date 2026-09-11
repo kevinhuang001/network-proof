@@ -1,6 +1,6 @@
 import type { ConnectedWallet, CompanionSettings, PendingRequest } from '@netproof/companion';
 import type { PasscodeRecord } from './lock';
-import { DEFAULT_SETTINGS } from '@netproof/companion';
+import { DEFAULT_SETTINGS, defaultTokens } from '@netproof/companion';
 
 /**
  * Browser storage for the web companion.
@@ -399,6 +399,24 @@ export interface StoredToken {
 export function loadTokens(chainId: number): StoredToken[] {
   const all = read<Record<string, StoredToken[]>>(TOKENS_KEY) ?? {};
   return all[String(chainId)] ?? [];
+}
+
+/**
+ * Everything the wallet should show for a chain: the seeded stablecoins plus what the user
+ * added, deduplicated by address.
+ *
+ * A user who pastes USDT's address themselves gets one row, not two: the stored entry wins
+ * over the seed, because their copy carries whatever `symbol()` reported when they added it.
+ */
+export function tokensForChain(chainId: number): StoredToken[] {
+  const merged = new Map<string, StoredToken>();
+  for (const seed of defaultTokens(chainId)) {
+    merged.set(seed.address.toLowerCase(), { ...seed, chainId });
+  }
+  for (const stored of loadTokens(chainId)) {
+    merged.set(stored.address.toLowerCase(), stored);
+  }
+  return [...merged.values()];
 }
 
 export function addToken(token: StoredToken): void {

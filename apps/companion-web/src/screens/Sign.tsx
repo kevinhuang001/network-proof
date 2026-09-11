@@ -301,10 +301,10 @@ export function SignScreen({ id }: { id: string }): ReactNode {
     return (
       <div className="np-main">
         <Alert tone="warn" title="请求已失效">
-          这条签名请求不存在或已被处理。请回到「dApp 测试台」重新发起。
+          这条签名请求不存在或已被处理。
         </Alert>
-        <Button block onClick={() => navigate({ name: 'developer' })}>
-          去发起请求
+        <Button block onClick={() => navigate({ name: 'home' })}>
+          回到钱包
         </Button>
       </div>
     );
@@ -333,8 +333,8 @@ export function SignScreen({ id }: { id: string }): ReactNode {
         <Alert tone="info">
           交易没有被广播，签名也不可用。请检查设备屏幕上显示的内容是否与你预期一致，然后重新发起。
         </Alert>
-        <Button block onClick={() => navigate({ name: 'developer' })}>
-          重新发起
+        <Button block onClick={() => navigate({ name: 'send' })}>
+          重新发送
         </Button>
       </div>
     );
@@ -489,7 +489,7 @@ export function SignScreen({ id }: { id: string }): ReactNode {
           onClick={() => {
             removePending(id);
             refresh();
-            navigate({ name: 'developer' });
+            navigate({ name: 'home' });
           }}
         >
           取消这笔请求

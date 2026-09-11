@@ -3,7 +3,7 @@ import { TextArea, TextField } from '@netproof/ui/text-field';
 import { useMemo, useState } from 'react';
 import { parseUnits, shortAddress } from '@netproof/core';
 import { chainLabel, fetchBalance, forwardToNode } from '@netproof/companion';
-import { loadTokens } from '../lib/store';
+import { tokensForChain } from '../lib/store';
 import {
   encodeErc20Transfer,
   fetchTokenBalance,
@@ -11,7 +11,7 @@ import {
   type CallFn,
 } from '../lib/tokens';
 import { useCompanion } from '../App';
-import { Alert, Badge, Button, KeyValue, Spinner } from '../ui/kit';
+import { Alert, Badge, Button, Header, KeyValue, Spinner } from '../ui/kit';
 import { formatEth, useVisibleAccounts } from './Wallet';
 
 /**
@@ -41,7 +41,7 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
   const token = useMemo(
     () =>
       tokenAddress
-        ? loadTokens(settings.chainId).find(
+        ? tokensForChain(settings.chainId).find(
             (entry) => entry.address.toLowerCase() === tokenAddress.toLowerCase(),
           ) ?? null
         : null,
@@ -182,10 +182,9 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
   }
 
   return (
-    <div className="np-main">
-      <h2 className="np-headline" style={{ fontSize: 22 }}>
-        发送
-      </h2>
+    <>
+      <Header title="发送" onBack={() => navigate({ name: 'home' })} />
+      <div className="np-main">
 
       <div className="np-card">
         <div className="np-row np-row--between">
@@ -265,8 +264,12 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
         </div>
       </div>
 
+      {/*
+        Outlined, not text-only: this one opens a field rather than navigating, and a bare
+        label under the amount read as a caption instead of a control.
+      */}
       {token ? null : (
-        <Button variant="ghost" size="small" onClick={() => setAdvanced((value) => !value)}>
+        <Button variant="outline" size="small" onClick={() => setAdvanced((value) => !value)}>
           {advanced ? '隐藏高级选项' : '高级选项（合约调用）'}
         </Button>
       )}
@@ -297,9 +300,6 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
       </Alert>
 
       <div className="np-row">
-        <Button variant="ghost" onClick={() => navigate({ name: 'home' })}>
-          取消
-        </Button>
         <div className="np-grow" />
         <Button disabled={!ready || preparing} onClick={() => void submit()}>
           {preparing ? '正在准备…' : '下一步：扫码签名'}
@@ -311,7 +311,8 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
           <span className="np-body np-body--tight">正在向节点查询 nonce 与 gas…</span>
         </div>
       ) : null}
-    </div>
+      </div>
+    </>
   );
 }
 

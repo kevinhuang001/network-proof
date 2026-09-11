@@ -34,6 +34,7 @@ export const NETWORKS: readonly NetworkInfo[] = [
   { chainId: 42161, label: 'Arbitrum One', symbol: 'ETH', decimals: 18, logo: 'arbitrum.png', family: 'evm' },
   { chainId: 8453, label: 'Base', symbol: 'ETH', decimals: 18, logo: 'base.png', family: 'evm' },
   { chainId: 43114, label: 'Avalanche', symbol: 'AVAX', decimals: 18, logo: 'avalanche.png', family: 'evm' },
+  { chainId: 11155111, label: 'Sepolia', symbol: 'ETH', decimals: 18, logo: 'sepolia.png', family: 'evm' },
   { chainId: 501, label: 'Solana', symbol: 'SOL', decimals: 9, logo: 'solana.png', family: 'solana' },
 ] as const;
 

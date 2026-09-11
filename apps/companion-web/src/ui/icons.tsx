@@ -189,3 +189,13 @@ export function HistoryIcon({ size = 20, className }: { size?: number; className
     </Svg>
   );
 }
+
+export function InfoIcon({ size = 18, className }: { size?: number; className?: string }): ReactNode {
+  return (
+    <Svg size={size} className={className}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 11v5.5" />
+      <circle cx="12" cy="7.9" r="0.9" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}

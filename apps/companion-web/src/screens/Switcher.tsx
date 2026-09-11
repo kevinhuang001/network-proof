@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import {
   allAddresses,
-  chainMeta,
   isSolanaChain,
   listAccounts,
   type CompanionSettings,
@@ -16,6 +15,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   CloseIcon,
+  InfoIcon,
   PencilIcon,
   PlusIcon,
   TrashIcon,
@@ -272,6 +272,19 @@ export function Switcher({ onClose }: { onClose: () => void }): ReactNode {
                     <button
                       type="button"
                       className="np-icon-btn np-icon-btn--plain"
+                      aria-label="查看地址详情"
+                      onClick={() => {
+                        if (!active) activateWallet(entry.id);
+                        updateSettings({ addressIndex: index });
+                        onClose();
+                        navigate({ name: 'addresses' });
+                      }}
+                    >
+                      <InfoIcon />
+                    </button>
+                    <button
+                      type="button"
+                      className="np-icon-btn np-icon-btn--plain"
                       aria-label="重命名账户"
                       onClick={() => {
                         setRenaming(account.address);
@@ -293,7 +306,7 @@ export function Switcher({ onClose }: { onClose: () => void }): ReactNode {
                 onClick={() => {
                   if (!active) activateWallet(entry.id);
                   if (itsAccounts.length >= cap) {
-                    show('没有更多可显示地址了，请到「设置 → 账户与派生」提高派生数量');
+                    show('这台设备导出的地址已全部显示');
                     return;
                   }
                   updateWallet(entry.id, { visibleAccounts: itsAccounts.length + 1 });
@@ -326,9 +339,6 @@ export function Switcher({ onClose }: { onClose: () => void }): ReactNode {
       <Button size="small" variant="secondary" block onClick={close(() => navigate({ name: 'connect' }))}>
         添加钱包
       </Button>
-      <div className="np-body np-body--tight np-center np-ink-3" style={{ fontSize: 11 }}>
-        {wallets.length} 个钱包 · {chainMeta(settings.chainId)?.name ?? ''}
-      </div>
     </>
   );
 }

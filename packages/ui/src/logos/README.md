@@ -18,6 +18,7 @@ that is already wrong about something visible.
 | `arbitrum.png` | Arbitrum One | 42161 |
 | `base.png` | Base | 8453 |
 | `solana.png` | Solana | 501 |
+| `sepolia.png` | Sepolia (testnet) | 11155111 |
 
 Upstream files are 192×192; these are re-encoded to 96×96 (displayed at 22–40px) to keep
 the app bundle small. Fetch command, for reproducibility:

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_SETTINGS,
+  DEFAULT_TOKENS,
   resolveAccounts,
   walletFromXpubMessage,
 } from '@netproof/companion';
@@ -18,8 +19,10 @@ import {
   removePending,
   removeWallet,
   revokeOrigin,
+  addToken,
   saveSettings,
   selectWallet,
+  tokensForChain,
   updateWallet,
   upsertWallet,
 } from '../src/lib/store';
@@ -239,5 +242,43 @@ describe('retired endpoints', () => {
       JSON.stringify({ rpcUrls: { 501: 'https://my-own-node.example/sol' } }),
     );
     expect(loadSettings().rpcUrls[501]).toBe('https://my-own-node.example/sol');
+  });
+});
+
+describe('seeded tokens', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('shows USDT and USDC on the chains that have them', () => {
+    const mainnet = tokensForChain(1).map((entry) => entry.symbol);
+    expect(mainnet).toContain('USDT');
+    expect(mainnet).toContain('USDC');
+    // Base genuinely has no canonical USDT: seeding a bridged wrapper next to the real
+    // ticker is how someone sends the wrong asset.
+    expect(tokensForChain(8453).map((entry) => entry.symbol)).toEqual(['USDC']);
+    // A chain with no list at all yields nothing rather than a guess.
+    expect(tokensForChain(999_999)).toEqual([]);
+  });
+
+  it('merges the user\'s own entry with the seed instead of duplicating it', () => {
+    const usdt = tokensForChain(1).find((entry) => entry.symbol === 'USDT')!;
+    addToken({ ...usdt, symbol: 'USDT', name: 'Tether USD' });
+    const rows = tokensForChain(1).filter((entry) => entry.address.toLowerCase() === usdt.address.toLowerCase());
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.chainId).toBe(1);
+  });
+
+  it('has a well-formed address and decimals for every seeded token', () => {
+    for (const [chainId, tokens] of Object.entries(DEFAULT_TOKENS)) {
+      for (const token of tokens) {
+        expect(token.address, `${chainId} ${token.symbol}`).toMatch(/^0x[0-9a-fA-F]{40}$/u);
+        expect(token.decimals).toBeGreaterThan(0);
+        expect(token.decimals).toBeLessThanOrEqual(18);
+      }
+      // Two seeds for the same address would render the same balance twice.
+      const addresses = tokens.map((entry) => entry.address.toLowerCase());
+      expect(new Set(addresses).size).toBe(addresses.length);
+    }
   });
 });

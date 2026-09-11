@@ -17,7 +17,7 @@ import {
   type CallFn,
   type TokenInfo,
 } from '../lib/tokens';
-import { addToken, loadTokens } from '../lib/store';
+import { addToken, tokensForChain } from '../lib/store';
 import { useCompanion } from '../App';
 import {
   Alert,
@@ -129,7 +129,7 @@ export function usePortfolio(): {
       }
 
       const nextTokens: typeof tokens = [];
-      for (const stored of loadTokens(settings.chainId)) {
+      for (const stored of tokensForChain(settings.chainId)) {
         const info: TokenInfo = { ...stored, native: false };
         const perAccount: Record<string, string> = {};
         let sum = 0n;
@@ -230,7 +230,7 @@ export function HomeScreen(): ReactNode {
         <span className="np-label">资产 · {chainLabel(settings.chainId)}</span>
         {solana ? null : (
           <button type="button" className="np-chip" onClick={() => navigate({ name: 'add-token' })}>
-            + 代币
+            添加代币
           </button>
         )}
       </div>
@@ -423,12 +423,9 @@ export function ReceiveScreen(): ReactNode {
   if (!current) return null;
 
   return (
-    <div className="np-main">
-      <h2 className="np-headline" style={{ fontSize: 22 }}>
-        接收
-      </h2>
-      <div className="np-body np-body--tight">「{current.name}」的收款地址</div>
-
+    <>
+      <Header title="接收" subtitle={current.name} onBack={() => navigate({ name: 'home' })} />
+      <div className="np-main">
       <AddressQr value={current.address} />
 
       <div className="np-card">
@@ -436,24 +433,15 @@ export function ReceiveScreen(): ReactNode {
         <div className="np-address" style={{ marginTop: 8 }}>{current.address}</div>
         <div className="np-row" style={{ marginTop: 10 }}>
           <CopyButton value={current.address} label="复制地址" />
-          <CopyButton value={current.path} label="复制派生路径" />
         </div>
       </div>
-
-      <Alert tone="info" title="用哪个地址收款">
-        每次收款都可以用同一个地址，也可以切换到下一个（「管理账户」→ 添加账户）。
-        地址都由离线设备派生，设备没联网也能继续派生新地址——你只需要把地址给对方。
-      </Alert>
-
-      <Button variant="ghost" onClick={() => navigate({ name: 'home' })}>
-        返回
-      </Button>
-    </div>
+      </div>
+    </>
   );
 }
 
 /** A scannable QR of the user's own address, so the sender can just point a phone at it. */
-function AddressQr({ value }: { value: string }): ReactNode {
+export function AddressQr({ value }: { value: string }): ReactNode {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   useEffect(() => {
     void import('qrcode').then(async (module) => {
@@ -528,13 +516,11 @@ export function AddTokenScreen(): ReactNode {
   };
 
   return (
-    <div className="np-main">
-      <h2 className="np-headline" style={{ fontSize: 22 }}>
-        添加代币
-      </h2>
+    <>
+      <Header title="添加代币" onBack={() => navigate({ name: 'home' })} />
+      <div className="np-main">
       <div className="np-body np-body--tight">
-        粘贴代币合约地址，钱包会直接向合约读取符号、名称与精度。当前网络：
-        {chainLabel(settings.chainId)}。
+        粘贴合约地址，直接向合约读取符号与精度 · {chainLabel(settings.chainId)}
       </div>
 
       <div className="np-field">
@@ -568,9 +554,6 @@ export function AddTokenScreen(): ReactNode {
       ) : null}
 
       <div className="np-row">
-        <Button variant="ghost" onClick={() => navigate({ name: 'home' })}>
-          返回
-        </Button>
         <div className="np-grow" />
         {found ? (
           <Button onClick={save}>确认添加</Button>
@@ -582,6 +565,7 @@ export function AddTokenScreen(): ReactNode {
       </div>
 
       {wallet ? null : <Alert tone="warn">尚未连接硬件钱包。</Alert>}
-    </div>
+      </div>
+    </>
   );
 }

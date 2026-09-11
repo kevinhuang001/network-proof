@@ -783,21 +783,32 @@ body {
   display: inline-flex;
 }
 
+/*
+ * The scrim and the panel are portalled to the document body by the components that use
+ * them, and positioned from there.
+ *
+ * Inside the header they inherited its stacking context, and a header that sits at
+ * `z-index: 10` caps everything under it: a menu opened from the header could be painted
+ * over by page content that happened to sit higher in the same context. From the body there
+ * is nothing to be trapped under, and these values only have to clear the sheets.
+ */
 .np-menu__scrim {
   position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
   left: 0;
-  z-index: 20;
+  z-index: 300;
 }
 
 .np-menu__panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 21;
-  min-width: 178px;
+  /* Positioned inline from the trigger's own bounding box: a fixed offset guessed at the
+     viewport was wrong as soon as the app was a centred phone-width card on a desktop, or
+     whenever the header's height changed. */
+  position: fixed;
+  z-index: 301;
+  min-width: 168px;
+  max-width: 240px;
   padding: 6px;
   display: flex;
   flex-direction: column;
