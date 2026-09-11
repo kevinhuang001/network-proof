@@ -818,6 +818,60 @@ body {
   color: var(--np-ink-2);
 }
 
+/* ---------- full-screen empty state ---------- */
+
+/*
+ * Used when there is nothing to show yet: no wallet paired, or no wallet on the
+ * device. An empty list with app chrome around it reads as "something failed";
+ * a centred invitation reads as "start here".
+ */
+.np-fullscreen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 0 24px calc(28px + env(safe-area-inset-bottom));
+  background: var(--np-bg);
+}
+
+.np-fullscreen__top {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 52px;
+}
+
+.np-fullscreen__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 14px;
+  padding: 24px 0;
+}
+
+.np-fullscreen__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 8px;
+}
+
+.np-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 26px;
+  background: var(--np-ink);
+  color: var(--np-ink-inverse);
+  margin-bottom: 6px;
+}
+
 /* ---------- misc ---------- */
 
 .np-spinner {

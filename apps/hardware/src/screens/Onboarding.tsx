@@ -11,6 +11,7 @@ import {
   PasswordMeter,
 } from '../components/primitives';
 import { MnemonicGrid, MnemonicQuiz } from '../components/Mnemonic';
+import { ShieldIcon } from '../components/icons';
 import { useSession } from '../state/session';
 
 /**
@@ -37,46 +38,45 @@ export function WelcomeScreen({
   hasVault: boolean;
 }): ReactNode {
   return (
-    <>
-      <Header
-        title=""
-        action={
-          <button type="button" className="np-icon-btn np-icon-btn--plain" onClick={onDiagnostics} aria-label="设置">
-            ⚙
-          </button>
-        }
-      />
-      <div className="np-main">
-        <div className="np-card np-card--hero">
-          <div className="np-label">NetProof Air</div>
-          <div className="np-hero-amount" style={{ marginTop: 6 }}>
-            断网手机
-            <br />
-            硬件钱包
-          </div>
-          <p className="np-body" style={{ color: 'rgba(255,255,255,.66)', marginTop: 10 }}>
-            私钥只在这台离线设备上。全程不联网。
-          </p>
-        </div>
-
+    <div className="np-fullscreen">
+      <div className="np-fullscreen__top">
+        <button
+          type="button"
+          className="np-icon-btn np-icon-btn--plain"
+          onClick={onDiagnostics}
+          aria-label="设置"
+        >
+          ⚙
+        </button>
       </div>
-      <div className="np-footer">
+
+      <div className="np-fullscreen__body">
+        <span className="np-brand-mark">
+          <ShieldIcon size={44} />
+        </span>
+        <h1 className="np-headline">NetProof Air</h1>
+        <p className="np-body" style={{ maxWidth: 250 }}>
+          私钥只在这台离线设备上。全程不联网。
+        </p>
+      </div>
+
+      <div className="np-fullscreen__actions">
         {hasVault ? (
           <Button block onClick={onUnlock}>
-            解锁这台设备
+            解锁
           </Button>
         ) : (
           <>
             <Button block onClick={onCreate}>
-              创建新钱包（摄像头熵）
+              新建钱包
             </Button>
             <Button variant="secondary" block onClick={onImport}>
-              导入已有助记词
+              导入钱包
             </Button>
           </>
         )}
       </div>
-    </>
+    </div>
   );
 }
 

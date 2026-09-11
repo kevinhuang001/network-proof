@@ -22,7 +22,9 @@ import {
   type ActivityRecord,
 } from './lib/store';
 import { Alert, Badge, Button, Spinner, Toast, shortAddress, useToast } from './ui/kit';
+import { BrandMark } from './ui/brand';
 import { ConnectScreen } from './screens/Connect';
+import { StartScreen } from './screens/Start';
 import { SignScreen } from './screens/Sign';
 import { AccountsScreen, AddTokenScreen, HomeScreen, ReceiveScreen } from './screens/Wallet';
 import { SendScreen } from './screens/Send';
@@ -267,6 +269,14 @@ export function App(): ReactNode {
 
 function Shell(): ReactNode {
   const { route, wallet } = useCompanion();
+
+  // With nothing paired there is no wallet to lay out around, so the empty state is
+  // the whole app. Settings remains reachable because the RPC endpoint may need
+  // setting before a device is ever connected.
+  if (!wallet && route.name !== 'settings' && route.name !== 'connect') {
+    return <StartScreen />;
+  }
+
   return (
     <div className="np-app np-app--wide">
       {/* No network and account pills until a device has been paired: an empty
@@ -448,20 +458,3 @@ function TopBar(): ReactNode {
 }
 
 export { Alert, Button };
-
-/**
- * The wallet's own mark.
- *
- * Doubles as the way home: every screen is reachable from the top bar, so the bar
- * needs exactly one always-present control, and a logo is the one thing users already
- * expect to be tappable.
- */
-export function BrandMark({ size = 22 }: { size?: number }): ReactNode {
-  return (
-    <svg width={size} height={size} viewBox="0 0 128 128" aria-hidden="true">
-      <rect width="128" height="128" rx="30" fill="#0B0B0F" />
-      <path d="M34 88V40h13l18 27V40h13v48H65L47 61v27H34z" fill="#FFFFFF" />
-      <circle cx="90" cy="50" r="8" fill="#0ECB81" />
-    </svg>
-  );
-}
