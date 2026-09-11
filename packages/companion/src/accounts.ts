@@ -120,12 +120,22 @@ export function resolveAccounts(wallet: ConnectedWallet, settings: CompanionSett
 }
 
 /**
- * Every address the companion can see, across every exported account.
+ * Every address the companion can see.
  *
- * This is what gets handed to a dApp through `eth_accounts`, so its size is a
- * deliberate trade-off: more addresses means a dApp can find funds the user spread
- * around, but it also discloses more of the user's wallet structure to that site.
- * `addressCount` bounds the disclosure and is user-configurable.
+ * This is the flat account list, and it is unbounded by construction: the device exports
+ * one account key (`m/44'/60'/0'`), and account i is `m/44'/60'/0'/0/i` — a path the
+ * companion derives from that single xpub without asking the device for anything. Adding
+ * an account is therefore local and unlimited, exactly as it is in MetaMask.
+ *
+ * What this *replaces*: the device used to export several hardened account keys
+ * (`m/44'/60'/i'`), and the UI showed their count as if it were a cap on accounts. It was
+ * not a cap on anything useful — those keys cannot be derived from each other, so the
+ * "3 个账户" it displayed was really "3 keys the device happened to send", while the
+ * addresses the user actually calls accounts were always derivable without limit.
+ *
+ * `addressCount` still bounds how many are *disclosed*, because this list is what a dApp
+ * sees through `eth_accounts`: more addresses lets a site find funds the user spread
+ * around, at the cost of showing it more of their wallet.
  */
 export function allAddresses(wallet: ConnectedWallet, settings: CompanionSettings): ResolvedAccount[] {
   if (isSolanaChain(settings.chainId)) {
@@ -133,10 +143,11 @@ export function allAddresses(wallet: ConnectedWallet, settings: CompanionSetting
     // a build of 20 exported addresses does not dump 20 accounts into the UI.
     return solanaAccounts(wallet).slice(0, Math.max(1, settings.visibleAccounts));
   }
-  const accounts = listAccounts(wallet, settings.schemeId);
-  return accounts.flatMap((entry) =>
-    deriveAccountAddresses(wallet, entry.scheme, entry.account, settings.addressCount),
-  );
+  // Only the first exported account is walked: the rest are the same family one hardened
+  // level over, and listing them would show two names for the same user-facing account.
+  const [entry] = listAccounts(wallet, settings.schemeId);
+  if (!entry) return [];
+  return deriveAccountAddresses(wallet, entry.scheme, entry.account, settings.addressCount);
 }
 
 export function primaryAccount(wallet: ConnectedWallet, settings: CompanionSettings): ResolvedAccount | null {

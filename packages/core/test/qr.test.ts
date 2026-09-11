@@ -470,7 +470,7 @@ describe('protocol messages', () => {
     expect(decoded.passphraseProtected).toBe(true);
     expect(decoded.device.name).toBe('NetProof Air');
     expect(decoded.accounts).toHaveLength(wallet.accounts.length);
-    expect(decoded.schemes.map((s) => s.id)).toEqual(['bip44', 'ledger-live', 'legacy-mew']);
+    expect(decoded.schemes.map((s) => s.id)).toEqual(['bip44']);
     expect(decoded.accounts[0]!.xpub).toBe(wallet.accounts[0]!.xpub);
     expect(decoded.accounts[0]!.firstAddress).toBe(wallet.accounts[0]!.firstAddress);
   });
@@ -670,21 +670,6 @@ describe('protocol messages', () => {
       const resolved = deriveAddressFromXpub(bip44Account1.xpub, 'bip44', 1, index);
       expect(resolved.address).toBe(reference(`m/44'/60'/1'/0/${index}`));
     }
-
-    // The Ledger Live scheme's xpub sits one level deeper.
-    const ledger = message.accounts.find((a) => a.scheme === 'ledger-live' && a.account === 0)!;
-    expect(deriveAddressFromXpub(ledger.xpub, 'ledger-live', 0, 0).address).toBe(
-      reference("m/44'/60'/0'/0/0"),
-    );
-    expect(deriveAddressFromXpub(ledger.xpub, 'ledger-live', 0, 2).address).toBe(
-      reference("m/44'/60'/0'/0/2"),
-    );
-
-    // The legacy chained scheme derives straight off the account xpub.
-    const legacy = message.accounts.find((a) => a.scheme === 'legacy-mew' && a.account === 0)!;
-    expect(deriveAddressFromXpub(legacy.xpub, 'legacy-mew', 0, 5).address).toBe(
-      reference("m/44'/60'/0'/5"),
-    );
     expect(() => deriveAddressFromXpub(bip44.xpub, 'nonexistent', 0, 0)).toThrow(/unknown derivation scheme/);
   });
 });

@@ -197,14 +197,16 @@ describe('hd (BIP32/BIP44)', () => {
     expect(() => derivePath(accountPub, "m/1'")).toThrow(/hardened/);
   });
 
-  it('exports every supported scheme and account as a watch-only xpub', () => {
+  it('exports every requested account as a watch-only xpub', () => {
     const exported = buildWalletExport(root, { accounts: 2, passphraseProtected: true });
     expect(exported.version).toBe(1);
     expect(exported.masterFingerprint).toMatch(/^[0-9a-f]{8}$/);
     expect(exported.passphraseProtected).toBe(true);
     expect(exported.rootXpub.startsWith('xpub')).toBe(true);
     expect(exported.accounts).toHaveLength(2 * EVM_SCHEMES.length);
-    expect(exported.schemes.map((s) => s.id)).toEqual(['bip44', 'ledger-live', 'legacy-mew']);
+    // BIP44 is the only scheme. A second one is how a restored seed shows an address the
+    // user does not recognise, on the screen whose job is to prove they recognise it.
+    expect(exported.schemes.map((s) => s.id)).toEqual(['bip44']);
 
     const ethersWallet = HDNodeWallet.fromSeed(hexlify(mnemonicToSeed(VECTOR.mnemonic, VECTOR.passphrase)));
     for (const account of exported.accounts) {
@@ -227,8 +229,6 @@ describe('hd (BIP32/BIP44)', () => {
     const bip44 = exported.schemes.find((s) => s.id === 'bip44')!;
     expect(fillTemplate(bip44.receiveTemplate, 2, 5)).toBe("m/44'/60'/2'/0/5");
     expect(fillTemplate(bip44.changeTemplate!, 0, 1)).toBe("m/44'/60'/0'/1/1");
-    const ledger = exported.schemes.find((s) => s.id === 'ledger-live')!;
-    expect(fillTemplate(ledger.receiveTemplate, 3, 0)).toBe("m/44'/60'/3'/0/0");
   });
 
   it('validates addresses and rejects absurd account counts', () => {

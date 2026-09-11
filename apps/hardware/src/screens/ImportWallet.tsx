@@ -267,22 +267,19 @@ function VerifyStep({
   onNext: () => void;
   onBack: () => void;
 }): ReactNode {
-  const [acknowledged, setAcknowledged] = useState(false);
-
   const derived = useMemo(() => {
     try {
       const root = HDKey.fromMasterSeed(mnemonicToSeed(phrase, passphrase));
+      // One account is all this screen needs: it compares the first address, not a list.
       const exported = buildWalletExport(root, { accounts: 1 });
       const first = exported.accounts.find((entry) => entry.scheme === 'bip44')!;
       return {
         fingerprint: exported.masterFingerprint,
         address: first.firstAddress,
-        path: first.firstAddressPath,
-        xpub: first.xpub,
         error: null as string | null,
       };
     } catch (error) {
-      return { fingerprint: '', address: '', path: '', xpub: '', error: (error as Error).message };
+      return { fingerprint: '', address: '', error: (error as Error).message };
     }
   }, [phrase, passphrase]);
 
@@ -290,60 +287,43 @@ function VerifyStep({
     <>
       <Header title="核对钱包" subtitle="第 2 / 3 步" onBack={onBack} />
       <div className="np-main">
-        <Alert tone="warn" title="这一步最重要">
-          请把下面的地址与原钱包（例如 MetaMask 的账户详情）逐位比对。一致才继续——
-          不一致说明助记词抄错了、顺序错了、或者 passphrase 不对，此时导入得到的是
-          <span className="np-ink">另一个钱包</span>，往里转币会直接丢失。
-        </Alert>
+        {/*
+          Two numbers, and nothing else.
 
+          Checking a restored seed means answering one question: did this produce the wallet
+          I already had? The fingerprint answers it for the whole wallet, and the first
+          address answers it for the account the user is about to see. Everything that used
+          to be on this screen — the account xpub, a path, a passphrase row, an explainer
+          about what to do without an original wallet to compare against — was either a
+          second way to ask the same question or a wall of text in front of it.
+        */}
         {derived.error ? (
           <Alert tone="danger">{derived.error}</Alert>
         ) : (
           <>
             <div className="np-card np-card--hero">
-              <div className="np-label">派生出的第一个地址</div>
-              <div className="np-mono" style={{ color: '#fff', marginTop: 10, fontSize: 15, wordBreak: 'break-all' }}>
+              <div className="np-label">第一个地址</div>
+              <div
+                className="np-mono"
+                style={{ color: '#fff', marginTop: 10, fontSize: 15, wordBreak: 'break-all' }}
+              >
                 {derived.address}
-              </div>
-              <div className="np-body" style={{ color: 'rgba(255,255,255,.6)', marginTop: 8 }}>
-                {derived.path}
               </div>
             </div>
 
             <div className="np-card">
-              <KeyValue label="钱包指纹 (BIP32)" value={derived.fingerprint} mono />
-              <KeyValue label="账户 xpub" value={`${derived.xpub.slice(0, 24)}…`} mono />
-              <KeyValue label="Passphrase" value={passphrase.length > 0 ? '已设置' : '未设置'} />
+              <KeyValue label="钱包指纹" value={derived.fingerprint} mono />
             </div>
 
             <div className="np-row">
-              <CopyButton value={derived.address} label="复制地址以便比对" />
+              <CopyButton value={derived.address} label="复制地址" />
               <CopyButton value={derived.fingerprint} label="复制指纹" />
             </div>
-
-            <div className="np-card np-card--sunken">
-              <div className="np-label">没有原钱包可以比对？</div>
-              <div className="np-body np-body--tight" style={{ marginTop: 6 }}>
-                不要跳过。至少把上面这个地址记下来，导入完成后先用小额转账验证一次，
-                确认资金进入的是你熟悉的账户。
-              </div>
-            </div>
-
-            <label className="np-switch np-card">
-              <input
-                type="checkbox"
-                checked={acknowledged}
-                onChange={(event) => setAcknowledged(event.target.checked)}
-              />
-              <span className="np-body np-body--tight">
-                我已核对该地址与原钱包一致
-              </span>
-            </label>
           </>
         )}
       </div>
       <div className="np-footer">
-        <Button block disabled={!acknowledged || derived.error !== null} onClick={onNext}>
+        <Button block disabled={derived.error !== null} onClick={onNext}>
           下一步：设置设备密码
         </Button>
       </div>

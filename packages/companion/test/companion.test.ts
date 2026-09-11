@@ -120,35 +120,46 @@ describe('watch-only account derivation', () => {
     );
   });
 
-  it('exposes every address of every exported account to dApps', () => {
+  it('derives the whole account list from the one exported xpub', () => {
     const wallet = makeWallet();
     const settings = { ...DEFAULT_SETTINGS, addressCount: 4 };
     const all = allAddresses(wallet, settings);
-    expect(all).toHaveLength(4 * 2); // 4 addresses across 2 exported accounts
-    const paths = all.map((entry) => entry.path);
-    expect(paths).toContain("m/44'/60'/0'/0/0");
-    expect(paths).toContain("m/44'/60'/1'/0/3");
+    // Account i is `m/44'/60'/0'/0/i`: one key, unbounded accounts, no extra export.
+    expect(all).toHaveLength(4);
+    expect(all.map((entry) => entry.path)).toEqual([
+      "m/44'/60'/0'/0/0",
+      "m/44'/60'/0'/0/1",
+      "m/44'/60'/0'/0/2",
+      "m/44'/60'/0'/0/3",
+    ]);
+    // And a wallet whose export happens to contain several hardened account keys still
+    // shows one flat list, because the user's accounts are the addresses, not the keys.
+    const many = walletFromXpubMessage(
+      buildXpubMessage(
+        buildWalletExport(HDKey.fromMasterSeed(mnemonicToSeed(MNEMONIC, '')), { accounts: 3 }),
+        { name: 'NetProof Air', model: 'test' },
+      ),
+    );
+    expect(allAddresses(many, settings)).toHaveLength(4);
   });
 
-  it('honours the selected account and derivation scheme', () => {
+  it('honours the selected account', () => {
     const wallet = makeWallet();
-    const ledger = resolveAccounts(wallet, { ...DEFAULT_SETTINGS, schemeId: 'ledger-live' })[0]!;
-    const ledgerExport = wallet.accounts.find(
-      (entry) => entry.scheme === 'ledger-live' && entry.account === 0,
-    )!;
-    expect(ledger.address).toBe(ledgerExport.firstAddress);
-    expect(ledger.path).toBe("m/44'/60'/0'/0/0");
+    const first = resolveAccounts(wallet, DEFAULT_SETTINGS)[0]!;
+    const exported = wallet.accounts.find((entry) => entry.scheme === 'bip44' && entry.account === 0)!;
+    expect(first.address).toBe(exported.firstAddress);
+    expect(first.path).toBe("m/44'/60'/0'/0/0");
 
     const account1 = resolveAccounts(wallet, { ...DEFAULT_SETTINGS, accountIndex: 1 })[0]!;
     expect(account1.path).toBe("m/44'/60'/1'/0/0");
-    expect(account1.address).not.toBe(ledger.address);
+    expect(account1.address).not.toBe(first.address);
   });
 
   it('stores exactly what the device sent, and nothing secret', () => {
     const wallet = makeWallet();
     expect(wallet.device.name).toBe('NetProof Air');
     expect(wallet.connectedAt).toBe(1_700_000_000_000);
-    expect(wallet.schemes.map((scheme) => scheme.id)).toEqual(['bip44', 'ledger-live', 'legacy-mew']);
+    expect(wallet.schemes.map((scheme) => scheme.id)).toEqual(['bip44']);
     // A watch-only wallet has no field that could hold a private key or a mnemonic.
     const serialized = JSON.stringify(wallet).toLowerCase();
     for (const forbidden of ['mnemonic', 'privatekey', 'private_key', 'seed', 'passphrase"']) {

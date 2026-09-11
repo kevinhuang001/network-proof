@@ -142,7 +142,10 @@ export function activeWallet(state: WalletState): WalletRecord | null {
  * device reports itself as "NetProof Air", and overwriting a name the user chose with the
  * device's default would undo their work every time they refreshed an account list.
  */
-export function upsertWallet(wallet: ConnectedWallet, preferred?: Partial<WalletScopedSettings>): WalletState {
+export function upsertWallet(
+  wallet: ConnectedWallet,
+  preferred?: Partial<WalletScopedSettings> & { name?: string },
+): WalletState {
   const state = loadWalletState();
   const id = wallet.masterFingerprint;
   const existing = state.wallets.find((entry) => entry.id === id);
@@ -150,7 +153,9 @@ export function upsertWallet(wallet: ConnectedWallet, preferred?: Partial<Wallet
   const record: WalletRecord = {
     ...wallet,
     id,
-    name: existing?.name ?? wallet.device?.name ?? '硬件钱包',
+    // A name the user typed wins; otherwise keep what the wallet already had, and only
+    // fall back to the device's own name for a first pairing with no name given.
+    name: preferred?.name?.trim() || existing?.name || wallet.device?.name || '硬件钱包',
     pairedAt: existing?.pairedAt ?? Date.now(),
     accountIndex: preferred?.accountIndex ?? existing?.accountIndex ?? 0,
     addressIndex: preferred?.addressIndex ?? existing?.addressIndex ?? 0,
@@ -199,12 +204,29 @@ export function clearWallets(): void {
   area.removeItem(PENDING_KEY);
 }
 
+/**
+ * Endpoints that are known not to work, and what to use instead.
+ *
+ * `api.mainnet-beta.solana.com` 403s any request with an `Origin` header, so a browser can
+ * never talk to it — but a user who paired before that was fixed has it stored, and stored
+ * settings win over defaults. Without this, their Solana balance stays broken forever with
+ * no hint about why.
+ */
+const RETIRED_RPC_URLS: Record<string, string> = {
+  'https://api.mainnet-beta.solana.com': 'https://solana-rpc.publicnode.com',
+};
+
 export function loadSettings(): CompanionSettings {
   const stored = read<Partial<CompanionSettings>>(SETTINGS_KEY);
+  const merged = { ...DEFAULT_SETTINGS.rpcUrls, ...(stored?.rpcUrls ?? {}) };
+  const rpcUrls: Record<number, string> = {};
+  for (const [chainId, url] of Object.entries(merged)) {
+    rpcUrls[Number(chainId)] = RETIRED_RPC_URLS[(url ?? '').trim()] ?? url;
+  }
   return {
     ...DEFAULT_SETTINGS,
     ...(stored ?? {}),
-    rpcUrls: { ...DEFAULT_SETTINGS.rpcUrls, ...(stored?.rpcUrls ?? {}) },
+    rpcUrls,
   };
 }
 

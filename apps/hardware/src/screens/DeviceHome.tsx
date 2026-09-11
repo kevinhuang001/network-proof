@@ -317,7 +317,7 @@ export function WalletsScreen({
 
         {confirming ? (
           <div className="np-mask" onClick={() => setConfirming(null)}>
-            <div className="np-sheet" onClick={(event) => event.stopPropagation()}>
+            <div className="np-sheet np-sheet--compact" onClick={(event) => event.stopPropagation()}>
               <div className="np-title">
                 删除「{wallets.find((entry) => entry.id === confirming)?.label}」？
               </div>

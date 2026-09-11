@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { parseUnits, shortAddress } from '@netproof/core';
 import {
   CHAINS,
+  isSolanaChain,
   DEFAULT_SETTINGS,
   MAX_ADDRESSES_PER_ACCOUNT,
   buildMessageRequest,
@@ -207,6 +208,7 @@ export function SettingsScreen(): ReactNode {
 /** Derivation plumbing and the raw xpub, for when something needs checking. */
 export function AdvancedScreen(): ReactNode {
   const { wallet, settings, updateSettings, navigate } = useCompanion();
+  const solana = isSolanaChain(settings.chainId);
   const { accounts } = useVisibleAccounts();
 
   if (!wallet) {
@@ -228,30 +230,30 @@ export function AdvancedScreen(): ReactNode {
       <div className="np-main">
 
       <div className="np-card">
-        <div className="np-label">派生方案</div>
-        <div className="np-chip-row" style={{ marginTop: 10 }}>
-          {wallet.schemes.map((scheme) => (
-            <button
-              key={scheme.id}
-              type="button"
-              className={`np-chip${scheme.id === settings.schemeId ? ' np-chip--active' : ''}`}
-              onClick={() => updateSettings({ schemeId: scheme.id, addressIndex: 0, visibleAccounts: 1 })}
-            >
-              {scheme.label}
-            </button>
-          ))}
-        </div>
+        <div className="np-label">派生</div>
         <div className="np-address" style={{ marginTop: 10 }}>
-          {wallet.schemes.find((scheme) => scheme.id === settings.schemeId)?.receive ??
-            'm/44\'/60\'/{account}\'/0/{index}'}
+          m/44&apos;/60&apos;/0&apos;/0/i
         </div>
+        <KeyValue label="方案" value="BIP44" />
         <div className="np-body np-body--tight" style={{ marginTop: 8 }}>
-          不同钱包软件历史上用过不同路径。如果你在别处看到的地址对不上，多半是这里选错了方案。
+          账户由设备导出的一个 xpub 推导，数量不限——没有「用完」这回事。
         </div>
       </div>
 
+      {solana ? (
+        <div className="np-card">
+          <div className="np-label">Solana 地址</div>
+          <KeyValue label="设备导出" value={`${wallet.addresses?.length ?? 0} 个`} />
+          <KeyValue label="已显示账户" value={String(settings.visibleAccounts)} />
+          <div className="np-body np-body--tight" style={{ marginTop: 8 }}>
+            Solana 的路径全是硬化的，推算不出新地址，只能用设备导出的这些。要更多就在设备
+            「设置」里提高数量，然后重新扫码导入。
+          </div>
+        </div>
+      ) : null}
+
       <div className="np-card">
-        <div className="np-label">每个账户派生多少地址</div>
+        <div className="np-label">dApp 可见地址数</div>
         <div className="np-chip-row" style={{ marginTop: 10 }}>
           {[5, 10, 20, 50, 100].map((count) => (
             <button
@@ -265,14 +267,13 @@ export function AdvancedScreen(): ReactNode {
           ))}
         </div>
         <div className="np-body np-body--tight" style={{ marginTop: 8 }}>
-          同时决定 dApp 通过 <span className="np-mono">eth_accounts</span> 能看到多少地址。
-          派生的地址越多，越容易找到你分散的资金，但也会把钱包结构的更多细节告诉对方。上限{' '}
-          {MAX_ADDRESSES_PER_ACCOUNT}。
+          通过 <span className="np-mono">eth_accounts</span> 能看到多少地址。越多越容易找到你分散的资金，
+          也会把钱包结构的更多细节告诉对方。上限 {MAX_ADDRESSES_PER_ACCOUNT}。
         </div>
       </div>
 
       <div className="np-card">
-        <div className="np-label">已显露的账户</div>
+        <div className="np-label">已显示的账户</div>
         <div className="np-chip-row" style={{ marginTop: 10 }}>
           {[1, 3, 5, 10].map((count) => (
             <button
@@ -286,7 +287,7 @@ export function AdvancedScreen(): ReactNode {
           ))}
         </div>
         <div className="np-body np-body--tight" style={{ marginTop: 8 }}>
-          只影响本页显示多少个账户，不影响 dApp 能看到多少。日常用「添加账户」逐个增加更清楚。
+          日常用右上角「添加账户」逐个增加更清楚。
         </div>
       </div>
 

@@ -21,7 +21,11 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
     // Solana is not an EVM chain: different JSON-RPC methods (getBalance returns
     // lamports), different address format, 9 decimals. It lives here because the user
     // experiences it as "another network in the picker".
-    501: 'https://api.mainnet-beta.solana.com',
+    // NOT `api.mainnet-beta.solana.com`: that endpoint answers HTTP 403 to any request
+    // carrying an `Origin` header, which is every request a browser makes. Verified by
+    // sending the same JSON-RPC call with and without `Origin` — 200 without, 403 with.
+    // PublicNode answers both and sends `access-control-allow-origin: *`.
+    501: 'https://solana-rpc.publicnode.com',
   },
   accountIndex: 0,
   schemeId: 'bip44',

@@ -8,10 +8,10 @@ import {
   type XpubExportMessage,
 } from '@netproof/core';
 import { walletFromXpubMessage } from '@netproof/companion';
+import { TextField } from '@netproof/ui/text-field';
 import { useCompanion } from '../App';
 import {
   Alert,
-  Badge,
   Button,
   CameraPanel,
   KeyValue,
@@ -31,6 +31,9 @@ export function ConnectScreen(): ReactNode {
   const collectorRef = useRef(new FrameCollector('NP-XPUB'));
   const [scanning, setScanning] = useState(true);
   const [preview, setPreview] = useState<XpubExportMessage | null>(null);
+  // A paired wallet is a named thing — with several, "NetProof Air" repeated three times
+  // tells the user nothing about which one they are looking at.
+  const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const onText = useCallback((text: string) => {
@@ -63,7 +66,7 @@ export function ConnectScreen(): ReactNode {
 
   const confirm = (): void => {
     if (!preview) return;
-    pair(walletFromXpubMessage(preview), preview.chainId);
+    pair(walletFromXpubMessage(preview), preview.chainId, name.trim() || undefined);
     show('已添加钱包');
     navigate({ name: 'home' });
   };
@@ -108,36 +111,37 @@ export function ConnectScreen(): ReactNode {
         {preview ? (
           <>
             <Alert tone="up" title="读取成功">
-              已从 {preview.device.name} 导入 {preview.accounts.length} 个账户级 xpub。
+              指纹 {preview.fingerprint} · {preview.device.name}
             </Alert>
+
+            {/*
+              One xpub, and the accounts derived from it.
+              
+              The scheme list and the "N 个账户级 xpub" badge are gone. The device exports
+              one BIP44 account key, and account i is `m/44'/60'/0'/0/i` — derivable without
+              limit from that key, so a count here was never a cap on anything, and three
+              schemes was a choice whose only possible effect was landing the user on an
+              address they did not recognise.
+            */}
             <div className="np-card">
-              <KeyValue label="钱包指纹" value={preview.fingerprint} mono />
-              <KeyValue label="设备" value={`${preview.device.name} · ${preview.device.model}`} />
+              <div className="np-label">钱包名称</div>
+              <TextField
+                className="np-input"
+                style={{ marginTop: 8 }}
+                value={name}
+                maxLength={24}
+                placeholder={preview.device.name}
+                onChange={setName}
+              />
+            </div>
+
+            <div className="np-card">
+              <KeyValue label="派生路径" value="m/44'/60'/0'/0/i" mono />
               <KeyValue
                 label="BIP39 Passphrase"
                 value={preview.passphraseProtected ? '已启用（保存在设备上）' : '未启用'}
               />
-              <KeyValue
-                label="根 xpub"
-                value={preview.rootXpub === preview.accounts[0]?.xpub ? '未导出（更私密）' : '已导出'}
-              />
-            </div>
-
-            <div className="np-list">
-              {preview.schemes.map((scheme) => {
-                const count = preview.accounts.filter((entry) => entry.scheme === scheme.id).length;
-                return (
-                  <div className="np-list__item np-list__item--static" key={scheme.id}>
-                    <div className="np-grow">
-                      <div className="np-subtitle">{scheme.label}</div>
-                      <div className="np-body np-body--tight np-mono">
-                        {scheme.receive.replace('{account}', '0').replace('{index}', 'i')}
-                      </div>
-                    </div>
-                    <Badge tone="accent">{count} 个账户</Badge>
-                  </div>
-                );
-              })}
+              <KeyValue label="根 xpub" value={preview.rootXpub === preview.accounts[0]?.xpub ? '未导出' : '已导出'} />
             </div>
 
             <div className="np-card">

@@ -27,30 +27,27 @@ export interface DerivationScheme {
   note: string;
 }
 
+/**
+ * BIP44, and only BIP44.
+ *
+ * This wallet used to offer Ledger Live's account model and MyEtherWallet's legacy chain as
+ * well. Both are real derivations that some existing wallet uses, and both were a way to
+ * import a seed and see an address the user did not recognise — which, on an import screen
+ * whose entire purpose is "did this produce the wallet I already had?", is the worst
+ * possible extra. MetaMask, OKX Web3, Trust Wallet and imToken all use BIP44, so a seed
+ * restored into any of them lands on the same addresses here.
+ *
+ * Adding a scheme back is a deliberate act, not a menu option: the flat account list
+ * derives account i as `m/44'/60'/0'/0/i`, which is unbounded by design.
+ */
 export const EVM_SCHEMES: DerivationScheme[] = [
   {
     id: 'bip44',
-    label: 'BIP44 标准',
+    label: 'BIP44',
     xpubPath: "m/44'/60'/{account}'",
     receiveTemplate: "m/44'/60'/{account}'/0/{index}",
     changeTemplate: "m/44'/60'/{account}'/1/{index}",
     note: 'MetaMask、OKX Web3、Trust Wallet、imToken 默认路径',
-  },
-  {
-    id: 'ledger-live',
-    label: 'Ledger Live',
-    xpubPath: "m/44'/60'/{account}'/0",
-    receiveTemplate: "m/44'/60'/{account}'/0/{index}",
-    changeTemplate: null,
-    note: 'Ledger Live 账户模型：账户 i 的第一个地址即账户地址',
-  },
-  {
-    id: 'legacy-mew',
-    label: 'Legacy (MyEtherWallet)',
-    xpubPath: "m/44'/60'/{account}'",
-    receiveTemplate: "m/44'/60'/{account}'/{index}",
-    changeTemplate: null,
-    note: '旧版 MyCrypto/MEW 导入使用的非 BIP44 链式路径',
   },
 ];
 
@@ -239,7 +236,7 @@ export function buildWalletExport(
   if (!root.privateKey && !root.publicKey) {
     throw new NetProofError('KEY_MISSING_PRIVATE', 'root node has no key material');
   }
-  const accountCount = options.accounts ?? 3;
+  const accountCount = options.accounts ?? 1;
   if (accountCount < 1 || accountCount > 100) {
     throw new NetProofError('PATH_INVALID', 'account count must be between 1 and 100');
   }

@@ -65,11 +65,8 @@ describe('web companion storage', () => {
     const restored = activeWallet(loadWalletState());
     expect(restored?.masterFingerprint).toBe(paired.masterFingerprint);
     expect(restored?.accounts).toHaveLength(paired.accounts.length);
-    expect(restored?.schemes.map((scheme) => scheme.id)).toEqual([
-      'bip44',
-      'ledger-live',
-      'legacy-mew',
-    ]);
+    // BIP44 only: one scheme, one flat account list derived from it.
+    expect(restored?.schemes.map((scheme) => scheme.id)).toEqual(['bip44']);
     // The restored wallet still derives the same addresses.
     expect(resolveAccounts(restored!, DEFAULT_SETTINGS)[0]!.address).toBe(
       paired.accounts[0]!.firstAddress,
@@ -216,5 +213,31 @@ describe('web companion storage', () => {
       const resolved = resolveAccounts(restored, { ...DEFAULT_SETTINGS, addressIndex: index })[index]!;
       expect(resolved.address).toBe(expected.address);
     }
+  });
+});
+
+describe('retired endpoints', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('replaces an RPC endpoint that cannot work from a browser', () => {
+    // `api.mainnet-beta.solana.com` 403s any request carrying an `Origin` header, so a
+    // browser can never reach it. A user who paired before this was fixed has it stored,
+    // and stored settings win over defaults — without the migration their Solana balance
+    // stays broken with no hint why.
+    window.localStorage.setItem(
+      'netproof.companion.settings.v1',
+      JSON.stringify({ rpcUrls: { 501: 'https://api.mainnet-beta.solana.com' } }),
+    );
+    expect(loadSettings().rpcUrls[501]).toBe('https://solana-rpc.publicnode.com');
+  });
+
+  it('leaves a custom endpoint alone', () => {
+    window.localStorage.setItem(
+      'netproof.companion.settings.v1',
+      JSON.stringify({ rpcUrls: { 501: 'https://my-own-node.example/sol' } }),
+    );
+    expect(loadSettings().rpcUrls[501]).toBe('https://my-own-node.example/sol');
   });
 });

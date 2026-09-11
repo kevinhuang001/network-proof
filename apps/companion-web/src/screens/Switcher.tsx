@@ -323,10 +323,10 @@ export function Switcher({ onClose }: { onClose: () => void }): ReactNode {
         );
       })}
 
-      <Button variant="secondary" block onClick={close(() => navigate({ name: 'connect' }))}>
+      <Button size="small" variant="secondary" block onClick={close(() => navigate({ name: 'connect' }))}>
         添加钱包
       </Button>
-      <div className="np-body np-body--tight np-center np-ink-3">
+      <div className="np-body np-body--tight np-center np-ink-3" style={{ fontSize: 11 }}>
         {wallets.length} 个钱包 · {chainMeta(settings.chainId)?.name ?? ''}
       </div>
     </>

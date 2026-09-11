@@ -1087,6 +1087,41 @@ body {
   padding: 0;
 }
 
+/*
+ * A compact sheet, for menus that are lists rather than forms.
+ *
+ * The default sheet is sized for a form someone reads before filling in: roomy rows, wide
+ * padding. A switcher is a list you scan and tap, and at that size a two-wallet menu was
+ * mostly empty space — the gaps were doing more work than the content.
+ */
+.np-sheet--compact {
+  padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
+  gap: 6px;
+}
+
+.np-sheet--compact .np-list__item {
+  padding: 8px 8px;
+  gap: 8px;
+}
+
+.np-sheet--compact .np-icon-btn {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+}
+
+.np-sheet--compact .np-label {
+  padding-left: 4px;
+}
+
+.np-sheet--compact .np-subtitle {
+  font-size: 14px;
+}
+
+.np-sheet--compact .np-body--tight {
+  font-size: 12px;
+}
+
 .np-sheet {
   background: var(--np-bg);
   border-radius: var(--np-radius-xl) var(--np-radius-xl) 0 0;
@@ -1215,5 +1250,6 @@ html.np-no-flex-gap .np-fullscreen__body > * + * { margin-top: 14px; }
 html.np-no-flex-gap .np-fullscreen__actions > * + * { margin-top: 10px; }
 html.np-no-flex-gap .np-mnemonic-word > * + * { margin-left: 7px; }
 html.np-no-flex-gap .np-sheet > * + * { margin-top: 14px; }
+html.np-no-flex-gap .np-sheet--compact > * + * { margin-top: 6px; }
 html.np-no-flex-gap .np-menu__panel > * + * { margin-top: 2px; }
 html.np-no-flex-gap .np-menu__item > * + * { margin-left: 10px; }
