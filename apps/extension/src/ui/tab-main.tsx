@@ -241,7 +241,7 @@ function ConnectScreen({
         ) : (
           <>
             <Alert tone="up" title="读取成功">
-              已从 {preview.device.name} 导入 {preview.accounts.length} 个账户级 xpub。
+              指纹 {preview.fingerprint} · {preview.device.name}
             </Alert>
             <div className="np-card">
               <KeyValue label="钱包指纹" value={preview.fingerprint} mono />
@@ -252,21 +252,8 @@ function ConnectScreen({
               />
               <KeyValue label="根 xpub" value={preview.rootXpub === preview.accounts[0]?.xpub ? '未导出' : '已导出'} />
             </div>
-            <div className="np-list">
-              {preview.schemes.map((scheme) => {
-                const accounts = preview.accounts.filter((entry) => entry.scheme === scheme.id);
-                return (
-                  <div className="np-list__item np-list__item--static" key={scheme.id}>
-                    <div className="np-grow">
-                      <div className="np-subtitle">{scheme.label}</div>
-                      <div className="np-body np-body--tight">
-                        {scheme.receive.replace('{account}', '0').replace('{index}', 'i')}
-                      </div>
-                    </div>
-                    <Badge tone="accent">{accounts.length} 个账户</Badge>
-                  </div>
-                );
-              })}
+            <div className="np-card">
+              <KeyValue label="派生路径" value="m/44'/60'/0'/0/i" mono />
             </div>
           </>
         )}
@@ -825,18 +812,8 @@ function AccountsScreen({
         onBack={() => (window.location.hash = '/settings')}
       />
       <div className="np-main">
-        <div className="np-chip-row">
-          {wallet.schemes.map((scheme) => (
-            <button
-              key={scheme.id}
-              type="button"
-              className={`np-chip${scheme.id === settings.schemeId ? ' np-chip--active' : ''}`}
-              onClick={() => void onSettings({ schemeId: scheme.id })}
-            >
-              {scheme.label}
-            </button>
-          ))}
-        </div>
+        {/* BIP44 is the only scheme; a picker with one option is a label. */}
+        <div className="np-address">m/44&apos;/60&apos;/0&apos;/0/i</div>
         <Button variant="secondary" block onClick={() => void loadBalances()}>
           刷新余额
         </Button>

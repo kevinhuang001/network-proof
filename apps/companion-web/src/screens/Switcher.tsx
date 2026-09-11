@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import {
-  allAddresses,
+  MAX_ADDRESSES_PER_ACCOUNT,
   isSolanaChain,
-  listAccounts,
+  visibleAccounts,
   type CompanionSettings,
   type ResolvedAccount,
 } from '@netproof/companion';
@@ -20,7 +20,7 @@ import {
   PlusIcon,
   TrashIcon,
 } from '../ui/icons';
-import { updateWallet, type WalletRecord } from '../lib/store';
+import type { WalletRecord } from '../lib/store';
 
 /**
  * The switcher, and the only place wallets and accounts are managed.
@@ -46,29 +46,36 @@ export function accountsOf(entry: WalletRecord, settings: CompanionSettings): Na
     ...settings,
     addressIndex: entry.addressIndex,
     visibleAccounts: entry.visibleAccounts,
+    hiddenAccounts: entry.hiddenAccounts ?? [],
   };
-  return allAddresses(entry, scoped)
-    .slice(0, Math.max(1, entry.visibleAccounts))
-    .map((account, index) => ({
-      ...account,
-      ordinal: index + 1,
-      name: settings.accountNames[account.address.toLowerCase()] ?? `账户 ${index + 1}`,
-    }));
+  return visibleAccounts(entry, scoped, MAX_ADDRESSES_PER_ACCOUNT).map((account, index) => ({
+    ...account,
+    ordinal: index + 1,
+    name: settings.accountNames[account.address.toLowerCase()] ?? `账户 ${index + 1}`,
+  }));
 }
 
-/** How many accounts a wallet can reveal: what the device exported, times the depth. */
+/**
+ * How many accounts a wallet can reveal.
+ *
+ * Solana is bounded by what the device exported, because its paths are hardened-only and the
+ * companion cannot compute another address. EVM is bounded only by the hard cap: the accounts
+ * are derived from one xpub, so "how many can I have" has no interesting answer below 200.
+ */
 export function maxAccounts(entry: WalletRecord, settings: CompanionSettings): number {
   if (isSolanaChain(settings.chainId)) return entry.addresses?.length ?? 0;
-  return listAccounts(entry, settings.schemeId).length * Math.max(1, settings.addressCount);
+  return MAX_ADDRESSES_PER_ACCOUNT;
 }
 
 export function Switcher({ onClose }: { onClose: () => void }): ReactNode {
   const {
     wallets,
+    patchWallet,
     wallet,
     settings,
     updateSettings,
     activateWallet,
+    addAccountToWallet,
     renameWallet,
     forgetWallet,
     navigate,
@@ -78,10 +85,34 @@ export function Switcher({ onClose }: { onClose: () => void }): ReactNode {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [confirming, setConfirming] = useState<string | null>(null);
+  /** Address of the account whose removal is being confirmed. */
+  const [removing, setRemoving] = useState<string | null>(null);
 
   const close = (action: () => void) => () => {
     onClose();
     action();
+  };
+
+  /**
+   * Remove an account from the list.
+   *
+   * The derivation still exists — `m/44'/60'/0'/0/i` is arithmetic, not an object — so this
+   * records the address as hidden. Recording it by address rather than by index is what keeps
+   * the action stable: hiding the third account and later adding a fourth must not reveal a
+   * different one in its place.
+   */
+  const removeAccount = (entry: WalletRecord, address: string): void => {
+    const hidden = [...(entry.hiddenAccounts ?? []), address.toLowerCase()];
+    if (entry.id !== wallet?.id) {
+      // A non-active wallet cannot go through `updateSettings`, which writes to the active
+      // one — but it still has to reach React, not just storage.
+      patchWallet(entry.id, { hiddenAccounts: hidden });
+      return;
+    }
+    updateSettings({ hiddenAccounts: hidden });
+    // If the removed account was the selected one, fall back to the first that is left.
+    const remaining = accountsOf({ ...entry, hiddenAccounts: hidden }, settings);
+    if (settings.addressIndex >= remaining.length) updateSettings({ addressIndex: 0 });
   };
 
   const saveAccountName = (): void => {
@@ -214,7 +245,30 @@ export function Switcher({ onClose }: { onClose: () => void }): ReactNode {
                     className="np-list__item"
                     style={{ borderRadius: 12, paddingLeft: 14 }}
                   >
-                    {renaming === account.address ? (
+                    {removing === account.address ? (
+                      <>
+                        <span className="np-grow np-body--tight">移除此账户？</span>
+                        <button
+                          type="button"
+                          className="np-icon-btn np-icon-btn--plain np-down"
+                          aria-label="确认移除账户"
+                          onClick={() => {
+                            removeAccount(entry, account.address);
+                            setRemoving(null);
+                          }}
+                        >
+                          <CheckIcon size={18} />
+                        </button>
+                        <button
+                          type="button"
+                          className="np-icon-btn np-icon-btn--plain"
+                          aria-label="取消"
+                          onClick={() => setRemoving(null)}
+                        >
+                          <CloseIcon />
+                        </button>
+                      </>
+                    ) : renaming === account.address ? (
                       <>
                         <TextField
                           className="np-input np-grow"
@@ -266,33 +320,45 @@ export function Switcher({ onClose }: { onClose: () => void }): ReactNode {
                       </button>
                     )}
 
-                    {active && index === settings.addressIndex ? (
-                      <span className="np-badge np-badge--accent">使用中</span>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="np-icon-btn np-icon-btn--plain"
-                      aria-label="查看地址详情"
-                      onClick={() => {
-                        if (!active) activateWallet(entry.id);
-                        updateSettings({ addressIndex: index });
-                        onClose();
-                        navigate({ name: 'addresses' });
-                      }}
-                    >
-                      <InfoIcon />
-                    </button>
-                    <button
-                      type="button"
-                      className="np-icon-btn np-icon-btn--plain"
-                      aria-label="重命名账户"
-                      onClick={() => {
-                        setRenaming(account.address);
-                        setDraft(account.name);
-                      }}
-                    >
-                      <PencilIcon />
-                    </button>
+                    {removing === account.address ? null : (
+                      <>
+                        {active && index === settings.addressIndex ? (
+                          <span className="np-badge np-badge--accent">使用中</span>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="np-icon-btn np-icon-btn--plain"
+                          aria-label="查看地址详情"
+                          onClick={() => {
+                            if (!active) activateWallet(entry.id);
+                            updateSettings({ addressIndex: index });
+                            onClose();
+                            navigate({ name: 'addresses' });
+                          }}
+                        >
+                          <InfoIcon />
+                        </button>
+                        <button
+                          type="button"
+                          className="np-icon-btn np-icon-btn--plain"
+                          aria-label="重命名账户"
+                          onClick={() => {
+                            setRenaming(account.address);
+                            setDraft(account.name);
+                          }}
+                        >
+                          <PencilIcon />
+                        </button>
+                        <button
+                          type="button"
+                          className="np-icon-btn np-icon-btn--plain"
+                          aria-label="移除账户"
+                          onClick={() => setRemoving(account.address)}
+                        >
+                          <TrashIcon />
+                        </button>
+                      </>
+                    )}
                   </div>
                 ))
               : null}
@@ -304,13 +370,19 @@ export function Switcher({ onClose }: { onClose: () => void }): ReactNode {
                 className="np-list__item"
                 style={{ borderRadius: 12, paddingLeft: 14 }}
                 onClick={() => {
-                  if (!active) activateWallet(entry.id);
                   if (itsAccounts.length >= cap) {
-                    show('这台设备导出的地址已全部显示');
+                    show(
+                      isSolanaChain(settings.chainId)
+                        ? 'Solana 只能用设备导出的地址，换个链就能继续添加账户'
+                        : '已达到地址派生上限',
+                    );
                     return;
                   }
-                  updateWallet(entry.id, { visibleAccounts: itsAccounts.length + 1 });
-                  onClose();
+                  if (!active) activateWallet(entry.id);
+                  // Deliberately no `onClose()`: the point of the button is the account that
+                  // appears underneath it, and closing the sheet on the same tap hid the only
+                  // evidence that anything happened.
+                  addAccountToWallet(entry.id);
                 }}
               >
                 <span

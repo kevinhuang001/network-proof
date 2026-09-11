@@ -100,6 +100,15 @@ interface CompanionValue {
   pair: (wallet: ConnectedWallet, preferredChainId?: number, name?: string) => void;
   /** Switch wallets. The account selection follows the wallet, not the app. */
   activateWallet: (id: string) => void;
+  /** Reveal one more account for a wallet. Works for any wallet, active or not. */
+  addAccountToWallet: (id: string) => void;
+  /**
+   * Apply a change to a wallet that is not the active one.
+   *
+   * Exposed because two actions do it — adding and removing an account — and writing straight
+   * to storage for those left the open sheet showing the old list.
+   */
+  patchWallet: (id: string, patch: Partial<WalletRecord>) => void;
   /** Lock the view. Honest scope: see `screens/Lock.tsx`. */
   locked: boolean;
   hasPasscode: boolean;
@@ -149,7 +158,7 @@ function parseRoute(hash: string): Route {
  * visible: `updateSettings` routes these keys to the active wallet and everything else to
  * the global record, which lets every existing screen keep calling `updateSettings`.
  */
-const WALLET_SCOPED = ['accountIndex', 'addressIndex', 'visibleAccounts'] as const;
+const WALLET_SCOPED = ['accountIndex', 'addressIndex', 'visibleAccounts', 'hiddenAccounts'] as const;
 
 function splitSettings(patch: Partial<CompanionSettings>): {
   scoped: Partial<CompanionSettings>;
@@ -187,19 +196,31 @@ function CompanionProvider({ children }: { children: ReactNode }): ReactNode {
   const wallet = activeWallet(state);
 
   // What every screen sees: global preferences, plus the active wallet's own selection.
-  const settings = useMemo<CompanionSettings>(
-    () => ({
+  const settings = useMemo<CompanionSettings>(() => {
+    if (!wallet) return globalSettings;
+    const scoped: CompanionSettings = {
       ...globalSettings,
-      ...(wallet
-        ? {
-            accountIndex: wallet.accountIndex,
-            addressIndex: wallet.addressIndex,
-            visibleAccounts: wallet.visibleAccounts,
-          }
-        : {}),
-    }),
-    [globalSettings, wallet],
-  );
+      accountIndex: wallet.accountIndex,
+      addressIndex: wallet.addressIndex,
+      visibleAccounts: wallet.visibleAccounts,
+      hiddenAccounts: wallet.hiddenAccounts ?? [],
+    };
+    /*
+     * Solana cannot derive accounts, so it can only offer the addresses the device exported.
+     * If the user has revealed more accounts than that — which is fine and normal on EVM —
+     * the selection is clamped for this chain rather than the chain being refused. Ten
+     * accounts is not ten accounts' worth of Solana; it is ten on EVM and five here.
+     */
+    if (isSolanaChain(scoped.chainId)) {
+      const available = Math.max(1, wallet.addresses?.length ?? 1);
+      return {
+        ...scoped,
+        visibleAccounts: Math.min(scoped.visibleAccounts, available),
+        addressIndex: Math.min(scoped.addressIndex, available - 1),
+      };
+    }
+    return scoped;
+  }, [globalSettings, wallet]);
 
   useEffect(() => {
     refresh();
@@ -261,6 +282,23 @@ function CompanionProvider({ children }: { children: ReactNode }): ReactNode {
 
   const activateWallet = useCallback((id: string) => {
     setState(selectWallet(id));
+  }, []);
+
+  /*
+   * Adding an account writes through the provider, not straight to storage.
+   *
+   * The switcher used to call the store directly for a wallet that was not the active one,
+   * which persisted the change and never told React: the spinner-free UI simply sat there
+   * with the old count, so "+ 添加账户" looked like it did nothing.
+   */
+  const patchWallet = useCallback((id: string, patch: Partial<WalletRecord>) => {
+    setState(updateWallet(id, patch));
+  }, []);
+
+  const addAccountToWallet = useCallback((id: string) => {
+    const target = loadWalletState().wallets.find((entry) => entry.id === id);
+    if (!target) return;
+    setState(updateWallet(id, { visibleAccounts: target.visibleAccounts + 1 }));
   }, []);
 
   const renameWallet = useCallback((id: string, name: string) => {
@@ -357,6 +395,8 @@ function CompanionProvider({ children }: { children: ReactNode }): ReactNode {
       updateSettings,
       pair,
       activateWallet,
+      addAccountToWallet,
+      patchWallet,
       locked,
       hasPasscode: passcode !== null,
       lock,
@@ -383,6 +423,8 @@ function CompanionProvider({ children }: { children: ReactNode }): ReactNode {
       refresh,
       updateSettings,
       pair,
+      addAccountToWallet,
+      patchWallet,
       locked,
       passcode,
       lock,
@@ -479,7 +521,7 @@ function Shell(): ReactNode {
  * paired, and the user asked which of their two wallets they were looking at.
  */
 function TopBar(): ReactNode {
-  const { settings, updateSettings, navigate, wallet, lock, show } = useCompanion();
+  const { settings, updateSettings, navigate, wallet, lock } = useCompanion();
   const [openMenu, setOpenMenu] = useState<'network' | 'account' | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const kebabRef = useRef<HTMLButtonElement | null>(null);
@@ -593,25 +635,6 @@ function TopBar(): ReactNode {
                       className="np-list__item"
                       style={{ borderRadius: 12 }}
                       onClick={() => {
-                        /*
-                         * Solana is the one chain this wallet cannot derive on its own.
-                         *
-                         * Every EVM account comes from one exported xpub, so EVM has no
-                         * ceiling. Solana's paths are hardened-only, so the companion can
-                         * only ever show the addresses the device actually computed — and
-                         * if the user has revealed more accounts than that, the honest move
-                         * is to refuse the switch rather than silently show five of their
-                         * twelve accounts and let them wonder where the rest went.
-                         */
-                        const exported = wallet?.addresses?.length ?? 0;
-                        if (isSolanaChain(chainId) && settings.visibleAccounts > exported) {
-                          setOpenMenu(null);
-                          show(
-                            `设备只导出了 ${exported} 个 Solana 地址，当前已显示 ${settings.visibleAccounts} 个账户。` +
-                              '请在设备「设置」里提高 Solana 派生数量，然后重新扫码导入这个钱包。',
-                          );
-                          return;
-                        }
                         updateSettings({ chainId });
                         setOpenMenu(null);
                       }}

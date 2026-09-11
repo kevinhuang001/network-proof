@@ -5,6 +5,7 @@ import {
   buildXpubMessage,
   deriveAddressFromXpub,
   mnemonicToSeed,
+  solanaAccountPaths,
 } from '@netproof/core';
 import { handleRpc } from '../src/rpc';
 import { buildMessageRequest, buildTransactionRequest } from '../src/rpc';
@@ -15,9 +16,10 @@ import {
   listAccounts,
   primaryAccount,
   resolveAccounts,
+  visibleAccounts,
   walletFromXpubMessage,
 } from '../src/accounts';
-import { DEFAULT_SETTINGS } from '../src/settings';
+import { DEFAULT_SETTINGS, SOLANA_CHAIN_ID } from '../src/settings';
 import type { ConnectedWallet, PendingRequest } from '../src/types';
 
 /**
@@ -531,5 +533,72 @@ describe('building the request that goes to the device', () => {
         },
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe('account limits per chain', () => {
+  it('derives past the dApp-disclosure bound when the UI asks for more', () => {
+    const wallet = makeWallet();
+    // `addressCount` is what a website may see. How many accounts the user may *create* is a
+    // different number, and the UI passes the hard cap for it.
+    const exposed = allAddresses(wallet, { ...DEFAULT_SETTINGS, addressCount: 20 });
+    expect(exposed).toHaveLength(20);
+    const forTheUi = allAddresses(wallet, { ...DEFAULT_SETTINGS, addressCount: 20 }, 40);
+    expect(forTheUi).toHaveLength(40);
+    expect(forTheUi[39]!.path).toBe("m/44'/60'/0'/0/39");
+  });
+
+  it('gives Solana only the addresses the device exported', () => {
+    const root = HDKey.fromMasterSeed(mnemonicToSeed(MNEMONIC, ''));
+    const exported = buildWalletExport(root, { accounts: 1 });
+    const message = buildXpubMessage(
+      { ...exported, addresses: solanaAccountPaths(5).map((path) => ({ path, address: `So${path}` })) },
+      { name: 'NetProof Air', model: 'test' },
+    );
+    const wallet = walletFromXpubMessage(message);
+
+    // Ten accounts revealed on EVM is normal; on Solana there are only five addresses to
+    // show, and the list stops at five rather than inventing more.
+    const solana = { ...DEFAULT_SETTINGS, chainId: SOLANA_CHAIN_ID, visibleAccounts: 10 };
+    expect(allAddresses(wallet, solana, 200)).toHaveLength(5);
+  });
+});
+
+describe('removing an account from the list', () => {
+  it('drops it from what the user sees, and from what a dApp sees', () => {
+    const wallet = makeWallet();
+    const settings = { ...DEFAULT_SETTINGS, visibleAccounts: 3 };
+    const before = visibleAccounts(wallet, settings, MAX_ADDRESSES_PER_ACCOUNT);
+    expect(before).toHaveLength(3);
+
+    // The second account is removed. The derivation still exists — this is a list decision,
+    // not arithmetic — so what is recorded is the address.
+    const removed = before[1]!.address;
+    const after = visibleAccounts(
+      wallet,
+      { ...settings, hiddenAccounts: [removed.toLowerCase()] },
+      MAX_ADDRESSES_PER_ACCOUNT,
+    );
+    expect(after).toHaveLength(2);
+    expect(after.map((entry) => entry.address)).not.toContain(removed);
+    // And the accounts that remain are the same ones, not renumbered onto new addresses.
+    expect(after[0]!.address).toBe(before[0]!.address);
+    expect(after[1]!.address).toBe(before[2]!.address);
+  });
+
+  it('hides the removed account from eth_accounts too', async () => {
+    const wallet = makeWallet();
+    const settings = { ...DEFAULT_SETTINGS, addressCount: 3, visibleAccounts: 3 };
+    const address = resolveAccounts(wallet, settings)[1]!.address;
+    const { context: ctx } = context({
+      wallet,
+      settings: { ...settings, hiddenAccounts: [address.toLowerCase()] },
+      approvedOrigins: ['https://app.example.org'],
+    });
+    const outcome = await handleRpc('eth_accounts', [], ctx);
+    // "Hidden from me" and "hidden from the internet" are the same list, or removing an
+    // account would be theatre.
+    expect(outcome.result as string[]).not.toContain(address);
+    expect((outcome.result as string[]).length).toBeGreaterThan(0);
   });
 });

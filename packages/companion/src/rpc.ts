@@ -194,7 +194,12 @@ async function dispatch(method: string, params: unknown[], context: RpcContext):
 }
 
 function accountsForDapp(wallet: ConnectedWallet, settings: CompanionSettings): string[] {
-  const accounts = resolveAccounts(wallet, settings);
+  const hidden = new Set(settings.hiddenAccounts.map((entry) => entry.toLowerCase()));
+  // An account the user removed is not offered to a site either: "hidden from me" and
+  // "hidden from the internet" have to be the same list, or the deletion is theatre.
+  const accounts = resolveAccounts(wallet, settings).filter(
+    (entry) => !hidden.has(entry.address.toLowerCase()),
+  );
   const primary = primaryAccount(wallet, settings);
   if (!primary) return [];
   // EIP-1193 expects the first account to be the "selected" one; the rest are

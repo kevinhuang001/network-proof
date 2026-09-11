@@ -130,6 +130,15 @@ export interface CompanionSettings {
   visibleAccounts: number;
   /** User-chosen display names, keyed by lowercase address. */
   accountNames: Record<string, string>;
+  /**
+   * Accounts the user removed from the list, by lowercase address.
+   *
+   * An account is a derivation, not an object: `m/44'/60'/0'/0/i` exists whether or not
+   * anyone looks at it, so "delete" can only mean "stop showing me this one". Recording the
+   * address rather than the index keeps that stable when the list grows — deleting account 3
+   * and then adding account 6 must not resurrect the wrong one.
+   */
+  hiddenAccounts: string[];
   qrFragmentLength: number;
   qrFrameDurationMs: number;
   /** Broadcast automatically once the device returns a valid signed payload. */

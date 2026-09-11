@@ -206,6 +206,25 @@ describe('web companion storage', () => {
     expect(activeWallet(remaining)!.name).toBe('Backup');
   });
 
+it('keeps hidden accounts hidden as the list grows', () => {
+    const paired = wallet();
+    upsertWallet(paired, { visibleAccounts: 3 });
+    const id = paired.masterFingerprint;
+
+    const state = loadWalletState();
+    const record = activeWallet(state)!;
+    expect(record.hiddenAccounts).toEqual([]);
+
+    // Addresses are what get recorded, not indices: hiding the third account and then adding
+    // a fourth must not reveal a different one in its place.
+    updateWallet(id, { hiddenAccounts: ['0xabc'] });
+    expect(activeWallet(loadWalletState())!.hiddenAccounts).toEqual(['0xabc']);
+
+    // And they survive a re-pair, which is when a user would lose them.
+    upsertWallet(paired, { visibleAccounts: 3 });
+    expect(activeWallet(loadWalletState())!.hiddenAccounts).toEqual(['0xabc']);
+  });
+
   it('agrees with the device on derived addresses after a storage round trip', () => {
     const paired = wallet();
     upsertWallet(paired);

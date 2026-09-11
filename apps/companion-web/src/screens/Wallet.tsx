@@ -2,8 +2,9 @@ import type { ReactNode } from 'react';
 import { TextField } from '@netproof/ui/text-field';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  allAddresses,
+  MAX_ADDRESSES_PER_ACCOUNT,
   chainLabel,
+  visibleAccounts,
   chainMeta,
   fetchBalance,
   isSolanaChain,
@@ -62,10 +63,14 @@ export function useVisibleAccounts(): { accounts: WalletAccount[] } {
 
   const accounts = useMemo(() => {
     if (!wallet) return [];
-    // Flattened across every exported account: account 0's addresses first, then
-    // account 1's. The hardened account boundary stays visible in the derivation
-    // path, but the user sees one continuing list of accounts.
-    const flat = allAddresses(wallet, settings).slice(0, Math.max(1, settings.visibleAccounts));
+    /*
+     * One continuing list of accounts, derived from the one xpub the device exports.
+     *
+     * The walk is bounded by the hard cap rather than by `addressCount`: the latter is how
+     * many addresses a *dApp* may see, and using it here meant creating the twenty-first
+     * account required editing a setting that no longer has a screen.
+     */
+    const flat = visibleAccounts(wallet, settings, MAX_ADDRESSES_PER_ACCOUNT);
     return flat.map((entry, index) => ({
       ...entry,
       ordinal: index + 1,

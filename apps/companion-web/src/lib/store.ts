@@ -71,6 +71,8 @@ export interface WalletScopedSettings {
   accountIndex: number;
   addressIndex: number;
   visibleAccounts: number;
+  /** Addresses the user removed from this wallet's account list. */
+  hiddenAccounts: string[];
 }
 
 /**
@@ -118,6 +120,7 @@ export function loadWalletState(): WalletState {
     accountIndex: scoped.accountIndex,
     addressIndex: scoped.addressIndex,
     visibleAccounts: scoped.visibleAccounts,
+    hiddenAccounts: scoped.hiddenAccounts ?? [],
   };
   const migrated: WalletState = { wallets: [record], activeId: record.id };
   write(WALLETS_KEY, migrated);
@@ -160,6 +163,7 @@ export function upsertWallet(
     accountIndex: preferred?.accountIndex ?? existing?.accountIndex ?? 0,
     addressIndex: preferred?.addressIndex ?? existing?.addressIndex ?? 0,
     visibleAccounts: preferred?.visibleAccounts ?? existing?.visibleAccounts ?? defaults.visibleAccounts,
+    hiddenAccounts: existing?.hiddenAccounts ?? [],
   };
   const wallets = existing
     ? state.wallets.map((entry) => (entry.id === id ? record : entry))

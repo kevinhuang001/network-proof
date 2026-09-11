@@ -33,6 +33,7 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
   addressCount: 20,
   visibleAccounts: 1,
   accountNames: {},
+  hiddenAccounts: [],
   qrFragmentLength: 300,
   qrFrameDurationMs: 420,
   autoBroadcast: true,

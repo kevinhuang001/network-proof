@@ -137,7 +137,18 @@ export function resolveAccounts(wallet: ConnectedWallet, settings: CompanionSett
  * sees through `eth_accounts`: more addresses lets a site find funds the user spread
  * around, at the cost of showing it more of their wallet.
  */
-export function allAddresses(wallet: ConnectedWallet, settings: CompanionSettings): ResolvedAccount[] {
+export function allAddresses(
+  wallet: ConnectedWallet,
+  settings: CompanionSettings,
+  /**
+   * How many addresses to walk. Defaults to the dApp-disclosure bound.
+   *
+   * The UI passes a larger number on purpose: how many accounts the user may *create* is not
+   * the same question as how many a website may *see*, and tying them together meant adding
+   * the twenty-first account required a settings screen that no longer exists.
+   */
+  limit = settings.addressCount,
+): ResolvedAccount[] {
   if (isSolanaChain(settings.chainId)) {
     // Lazy by construction: only the addresses the user has revealed are returned, so
     // a build of 20 exported addresses does not dump 20 accounts into the UI.
@@ -147,7 +158,26 @@ export function allAddresses(wallet: ConnectedWallet, settings: CompanionSetting
   // level over, and listing them would show two names for the same user-facing account.
   const [entry] = listAccounts(wallet, settings.schemeId);
   if (!entry) return [];
-  return deriveAccountAddresses(wallet, entry.scheme, entry.account, settings.addressCount);
+  return deriveAccountAddresses(wallet, entry.scheme, entry.account, limit);
+}
+
+/**
+ * The accounts to show, in order: the first `visibleAccounts`, minus the ones removed.
+ *
+ * One function because two screens ask this question — the asset list and the switcher — and
+ * when they each answered it themselves, they disagreed: removing an account made it vanish
+ * from the wallet but stay in the switcher, which is where the user had just pressed the
+ * button. Removing an account is a *policy* decision, so it lives next to the other policy.
+ */
+export function visibleAccounts(
+  wallet: ConnectedWallet,
+  settings: CompanionSettings,
+  limit?: number,
+): ResolvedAccount[] {
+  const hidden = new Set((settings.hiddenAccounts ?? []).map((entry) => entry.toLowerCase()));
+  return allAddresses(wallet, settings, limit)
+    .slice(0, Math.max(1, settings.visibleAccounts))
+    .filter((entry) => !hidden.has(entry.address.toLowerCase()));
 }
 
 export function primaryAccount(wallet: ConnectedWallet, settings: CompanionSettings): ResolvedAccount | null {
