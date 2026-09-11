@@ -193,7 +193,14 @@ async function dispatch(method: string, params: unknown[], context: RpcContext):
   throw new RpcError({ code: -32601, message: `不支持的方法 ${method}` });
 }
 
-function accountsForDapp(wallet: ConnectedWallet, settings: CompanionSettings): string[] {
+/**
+ * The addresses a site is offered, selected account first.
+ *
+ * Exported because the host needs the same answer *after* an approval, to announce the
+ * connection to a page that is already open: an SDK that timed out waiting for its own
+ * `connect()` can recover from an `accountsChanged` event without a reload.
+ */
+export function accountsForDapp(wallet: ConnectedWallet, settings: CompanionSettings): string[] {
   const hidden = new Set(settings.hiddenAccounts.map((entry) => entry.toLowerCase()));
   // An account the user removed is not offered to a site either: "hidden from me" and
   // "hidden from the internet" have to be the same list, or the deletion is theatre.

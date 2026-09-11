@@ -7,7 +7,7 @@ import {
   mnemonicToSeed,
   solanaAccountPaths,
 } from '@netproof/core';
-import { handleRpc } from '../src/rpc';
+import { accountsForDapp, handleRpc } from '../src/rpc';
 import { buildMessageRequest, buildTransactionRequest } from '../src/rpc';
 import {
   MAX_ADDRESSES_PER_ACCOUNT,
@@ -618,5 +618,25 @@ describe('account names survive a removal', () => {
     // positional name would renumber it to 3 the moment the row above it disappeared.
     const removed = visibleAccounts(wallet, settings, MAX_ADDRESSES_PER_ACCOUNT)[1]!.address;
     expect(names([removed.toLowerCase()])).toEqual(['账户 1', '账户 3', '账户 4']);
+  });
+});
+
+describe('announcing a connection', () => {
+  it('offers the selected account first, and hides removed ones', () => {
+    const wallet = makeWallet();
+    const settings = { ...DEFAULT_SETTINGS, addressCount: 3, addressIndex: 1, visibleAccounts: 3 };
+    const offered = accountsForDapp(wallet, settings);
+    const selected = resolveAccounts(wallet, settings);
+
+    // EIP-1193 expects the first entry to be the account the user is *on* — which is
+    // `addressIndex`, not index zero.
+    expect(offered[0]).toBe(selected[settings.addressIndex]!.address);
+    expect(offered).toHaveLength(settings.addressCount);
+
+    const hidden = accountsForDapp(wallet, {
+      ...settings,
+      hiddenAccounts: [offered[1]!.toLowerCase()],
+    });
+    expect(hidden).not.toContain(offered[1]);
   });
 });

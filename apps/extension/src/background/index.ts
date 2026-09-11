@@ -11,7 +11,7 @@ import {
   putPending,
   removePending,
 } from '../lib/store';
-import { ERRORS, RpcError } from '@netproof/companion';
+import { ERRORS, RpcError, accountsForDapp } from '@netproof/companion';
 import type {
   ApprovalResult,
   ContentToBackground,
@@ -47,6 +47,15 @@ interface PendingResolver {
 }
 
 const resolvers = new Map<string, PendingResolver>();
+
+/**
+ * Which page asked, so an event can be delivered to that page and no other.
+ *
+ * `accountsChanged` carries addresses. Broadcasting it to every open tab would tell one site
+ * that some wallet exists and what it holds.
+ */
+const originPorts = new Map<string, chrome.runtime.Port>();
+const portOrigins = new WeakMap<chrome.runtime.Port, string>();
 
 /**
  * The last few things this worker decided, and why.
@@ -93,6 +102,8 @@ chrome.runtime.onConnect.addListener((port) => {
           return;
         }
         if (message.type !== 'rpc') return;
+        originPorts.set(message.origin, port);
+        portOrigins.set(port, message.origin);
         const outcome = await route(message.method, message.params, message.origin);
         port.postMessage({ type: 'rpc-result', id: message.id, ...outcome });
       } catch (error) {
@@ -246,11 +257,47 @@ function settle(message: ApprovalResult): void {
   const resolver = resolvers.get(message.id);
   if (!resolver) return;
   resolvers.delete(message.id);
-  void removePending(message.id);
   void markPending(0);
+  void getPending(message.id).then((request) => {
+    if (request) lastApprovedOrigin = request.origin;
+  });
+  void announceIfConnected(message);
   if (message.error) resolver.reject(message.error);
   else resolver.resolve(message.result);
 }
+
+/**
+ * Tell the page it is connected, the moment it is.
+ *
+ * A dApp that calls `eth_requestAccounts` on load and gives up after thirty seconds has
+ * usually given up before a human has finished approving — that is the "EIP1193 provider
+ * connection timeout" in the wild. Between the timeout and the next page load nothing
+ * reconnects the site, so the approval lands on a page that has stopped listening. An
+ * `accountsChanged` event is what wallets emit at this point, and what SDKs like wagmi watch
+ * for, so the page can recover without the user reloading anything.
+ */
+async function announceIfConnected(message: ApprovalResult): Promise<void> {
+  if (message.error) return;
+  const request = await getPending(message.id);
+  const origin = request?.origin ?? lastApprovedOrigin;
+  const port = origin ? originPorts.get(origin) : undefined;
+  if (!origin || !port) return;
+  const wallet = await loadWallet();
+  if (!wallet) return;
+  const settings = await loadSettings();
+  try {
+    port.postMessage({
+      type: 'event',
+      event: 'accountsChanged',
+      data: accountsForDapp(wallet, settings),
+    });
+  } catch {
+    // The page went away; nothing to announce to.
+  }
+}
+
+/** The origin most recently approved, for a request whose record is already gone. */
+let lastApprovedOrigin: string | null = null;
 
 /**
  * The approval tab records the outcome here once the device has signed and the
@@ -263,6 +310,7 @@ export async function completeApproval(
 ): Promise<void> {
   const request = await getPending(id);
   if (!request) return;
+  lastApprovedOrigin = request.origin;
   await removePending(id);
   raiseBadge();
   const resolver = resolvers.get(id);

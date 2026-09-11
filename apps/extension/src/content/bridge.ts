@@ -22,7 +22,16 @@ import { CHANNEL_EVENT, CHANNEL_INFO, CHANNEL_REQUEST, CHANNEL_RESPONSE } from '
 import { BridgeConnection } from './connection';
 
 function toPage(message: unknown): void {
-  const data = message as { type?: string; id?: string; result?: unknown; error?: unknown };
+  const data = message as { type?: string; id?: string; result?: unknown; error?: unknown; event?: string };
+  if (data?.type === 'event' && typeof data.event === 'string') {
+    // Events are how a wallet says "this changed", and how an SDK recovers from having given
+    // up on its own connection attempt.
+    window.postMessage(
+      { channel: CHANNEL_EVENT, event: data.event, data: (data as { data?: unknown }).data },
+      window.location.origin,
+    );
+    return;
+  }
   if (data?.type !== 'rpc-result' || !data.id) return;
   window.postMessage(
     {
