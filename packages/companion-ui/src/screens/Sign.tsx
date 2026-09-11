@@ -376,8 +376,10 @@ export function SignScreen({ id }: { id: string }): ReactNode {
               </>
             ) : null}
           </div>
-          <Alert tone="info">
-            只共享地址。任何签名都要扫二维码，由离线设备确认。
+          {/* Say what this step is *not*: the first question everyone asks here is whether
+              they now have to go and fetch the phone. Connecting is bookkeeping. */}
+          <Alert tone="info" title="这一步不用签名">
+            连接只共享地址，不需要设备。之后每一次签名才要扫二维码，由离线设备确认。
           </Alert>
           <Button block onClick={() => decide(true)}>
             允许
