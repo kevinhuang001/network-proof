@@ -1,4 +1,5 @@
 import { deriveAddressFromXpub } from '@netproof/core';
+import { SOLANA_CHAIN_ID, isSolanaChain } from './settings';
 import type { XpubExportMessage } from '@netproof/core';
 import type { ConnectedWallet, CompanionSettings } from './types';
 
@@ -57,11 +58,15 @@ export function solanaAccounts(wallet: ConnectedWallet): ResolvedAccount[] {
   }));
 }
 
+/** True when this export contains anything for the given chain. */
+export function supportsChain(wallet: ConnectedWallet, chainId: number): boolean {
+  return chainId === SOLANA_CHAIN_ID ? (wallet.addresses?.length ?? 0) > 0 : wallet.accounts.length > 0;
+}
+
 export function listAccounts(
   wallet: ConnectedWallet,
   schemeId?: string,
 ): ConnectedWallet['accounts'] {
-  if (wallet.family === 'solana') return [];
   const entries = schemeId
     ? wallet.accounts.filter((entry) => entry.scheme === schemeId)
     : wallet.accounts;
@@ -102,7 +107,7 @@ export function deriveAccountAddresses(
 
 /** The addresses of the currently selected account. */
 export function resolveAccounts(wallet: ConnectedWallet, settings: CompanionSettings): ResolvedAccount[] {
-  if (wallet.family === 'solana') {
+  if (isSolanaChain(settings.chainId)) {
     const all = solanaAccounts(wallet);
     return all.slice(settings.accountIndex, settings.accountIndex + 1);
   }
@@ -123,7 +128,11 @@ export function resolveAccounts(wallet: ConnectedWallet, settings: CompanionSett
  * `addressCount` bounds the disclosure and is user-configurable.
  */
 export function allAddresses(wallet: ConnectedWallet, settings: CompanionSettings): ResolvedAccount[] {
-  if (wallet.family === 'solana') return solanaAccounts(wallet);
+  if (isSolanaChain(settings.chainId)) {
+    // Lazy by construction: only the addresses the user has revealed are returned, so
+    // a build of 20 exported addresses does not dump 20 accounts into the UI.
+    return solanaAccounts(wallet).slice(0, Math.max(1, settings.visibleAccounts));
+  }
   const accounts = listAccounts(wallet, settings.schemeId);
   return accounts.flatMap((entry) =>
     deriveAccountAddresses(wallet, entry.scheme, entry.account, settings.addressCount),
@@ -147,29 +156,16 @@ export function walletFromXpubMessage(
   message: XpubExportMessage,
   connectedAt = Date.now(),
 ): ConnectedWallet {
-  const family = message.family ?? 'evm';
-  if (family === 'solana') {
-    if (!message.addresses || message.addresses.length === 0) {
-      throw new Error('设备没有导出任何 Solana 地址');
-    }
-    return {
-      family: 'solana',
-      addresses: message.addresses.map((entry) => ({ path: entry.path, address: entry.address })),
-      masterFingerprint: message.fingerprint,
-      passphraseProtected: message.passphraseProtected,
-      rootXpub: message.rootXpub,
-      coinType: message.coinType,
-      device: message.device,
-      accounts: [],
-      schemes: [],
-      connectedAt,
-    };
-  }
-  if (message.accounts.length === 0) {
-    throw new Error('设备没有导出任何账户 xpub');
+  // A device exports both families in one payload: EVM account xpubs (usable on every
+  // EVM chain) plus Solana addresses. The companion stores all of it and picks per
+  // network, so the device never has to ask which chain the user wants.
+  if (message.accounts.length === 0 && (message.addresses?.length ?? 0) === 0) {
+    throw new Error('设备没有导出任何账户或地址');
   }
   return {
-    family: 'evm',
+    ...(message.addresses !== undefined
+      ? { addresses: message.addresses.map((entry) => ({ path: entry.path, address: entry.address })) }
+      : {}),
     masterFingerprint: message.fingerprint,
     passphraseProtected: message.passphraseProtected,
     rootXpub: message.rootXpub,

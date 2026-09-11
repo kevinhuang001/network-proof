@@ -463,6 +463,7 @@ export function AccountsScreen(): ReactNode {
   const { wallet, settings, updateSettings, navigate, show } = useCompanion();
   const { accounts } = useVisibleAccounts();
   const { native } = usePortfolio();
+  const solana = isSolanaChain(settings.chainId);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const { toast, show: toastShow } = useToast();
@@ -470,8 +471,12 @@ export function AccountsScreen(): ReactNode {
   if (!wallet) return null;
 
   const exported = listAccounts(wallet, settings.schemeId);
-  const solanaWallet = wallet.family === 'solana';
-  const maxRevealable = solanaWallet ? (wallet.addresses?.length ?? 0) : exported.length * settings.addressCount;
+  // How many accounts can be revealed at all: for Solana that is however many addresses
+  // the device exported; for EVM it is the exported accounts times the per-account
+  // derivation depth.
+  const maxRevealable = solana
+    ? (wallet.addresses?.length ?? 0)
+    : exported.length * settings.addressCount;
 
   const addAccount = (): void => {
     if (settings.visibleAccounts >= maxRevealable) {

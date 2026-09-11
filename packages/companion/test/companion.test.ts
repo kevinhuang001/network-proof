@@ -157,6 +157,56 @@ describe('watch-only account derivation', () => {
   });
 });
 
+describe('combined EVM + Solana export', () => {
+  it('stores both families from one payload and picks per network', () => {
+    const root = HDKey.fromMasterSeed(mnemonicToSeed(MNEMONIC, ''));
+    const exported = buildWalletExport(root, { accounts: 1 });
+    const message = buildXpubMessage(
+      {
+        ...exported,
+        addresses: [
+          { path: "m/44'/501'/0'/0'", address: 'So11111111111111111111111111111111111111112' },
+          { path: "m/44'/501'/1'/0'", address: 'So11111111111111111111111111111111111111113' },
+        ],
+      },
+      { name: 'NetProof Air', model: 'test' },
+    );
+    const paired = walletFromXpubMessage(message);
+    expect(paired.accounts.length).toBeGreaterThan(0);
+    expect(paired.addresses).toHaveLength(2);
+
+    // On an EVM chain the companion derives from the xpubs…
+    const evm = allAddresses(paired, { ...DEFAULT_SETTINGS, chainId: 1, visibleAccounts: 2 });
+    expect(evm[0]!.address).toMatch(/^0x/u);
+
+    // …and on Solana it uses the exported addresses, lazily.
+    const solana = allAddresses(paired, { ...DEFAULT_SETTINGS, chainId: 501, visibleAccounts: 1 });
+    expect(solana).toHaveLength(1);
+    expect(solana[0]!.address).toBe('So11111111111111111111111111111111111111112');
+    expect(solana[0]!.path).toBe("m/44'/501'/0'/0'");
+
+    // Revealing a second account surfaces the second address, not a derivation.
+    const two = allAddresses(paired, { ...DEFAULT_SETTINGS, chainId: 501, visibleAccounts: 2 });
+    expect(two).toHaveLength(2);
+    expect(two[1]!.address).toBe('So11111111111111111111111111111111111111113');
+  });
+
+  it('refuses a payload with neither accounts nor addresses', () => {
+    const empty = buildXpubMessage(
+      {
+        masterFingerprint: '00000000',
+        passphraseProtected: false,
+        rootXpub: 'xpub',
+        coinType: 60,
+        accounts: [],
+        schemes: [],
+      },
+      { name: 'x', model: 'y' },
+    );
+    expect(() => walletFromXpubMessage(empty)).toThrow(/没有导出任何账户或地址/);
+  });
+});
+
 describe('dApp RPC policy', () => {
   it('reports no accounts to a site that has not been approved', async () => {
     const wallet = makeWallet();
