@@ -18,7 +18,9 @@ import { DEFAULT_SETTINGS } from '@netproof/companion';
  */
 
 const PREFIX = 'netproof.companion.';
-const WALLET_KEY = `${PREFIX}wallet.v1`;
+/** Pre-multi-wallet key. Read once, migrated, then removed. */
+const LEGACY_WALLET_KEY = `${PREFIX}wallet.v1`;
+const WALLETS_KEY = `${PREFIX}wallets.v1`;
 const SETTINGS_KEY = `${PREFIX}settings.v1`;
 const ORIGINS_KEY = `${PREFIX}origins.v1`;
 const PENDING_KEY = `${PREFIX}pending.v1`;
@@ -50,18 +52,146 @@ function write(key: string, value: unknown): void {
   storage()?.setItem(key, JSON.stringify(value));
 }
 
-export function loadWallet(): ConnectedWallet | null {
-  return read<ConnectedWallet>(WALLET_KEY);
+// ---------------------------------------------------------------------------
+// Wallets
+// ---------------------------------------------------------------------------
+
+/**
+ * Settings that belong to a *wallet* rather than to the app.
+ *
+ * Which account you are looking at is a property of the wallet you are looking at: with
+ * several paired, a single global "account 3" would move the selection under the user
+ * every time they switched, and the address they were about to send to would change
+ * while they were reading it.
+ */
+export interface WalletScopedSettings {
+  accountIndex: number;
+  addressIndex: number;
+  visibleAccounts: number;
 }
 
-export function saveWallet(wallet: ConnectedWallet): void {
-  write(WALLET_KEY, wallet);
+/**
+ * A paired device wallet.
+ *
+ * `id` is the BIP32 master fingerprint, which is already the wallet's stable identity:
+ * the same mnemonic and passphrase always produce it, and two different ones never
+ * collide. Pairing the same device twice therefore *updates* a wallet instead of adding
+ * a duplicate, which is what a user re-scanning for a refreshed account list expects.
+ */
+export interface WalletRecord extends ConnectedWallet, WalletScopedSettings {
+  id: string;
+  /** User-facing name. Defaults to the device's own name. */
+  name: string;
+  pairedAt: number;
 }
 
-export function clearWallet(): void {
+export interface WalletState {
+  wallets: WalletRecord[];
+  activeId: string | null;
+}
+
+const EMPTY_STATE: WalletState = { wallets: [], activeId: null };
+
+export function loadWalletState(): WalletState {
+  const stored = read<WalletState>(WALLETS_KEY);
+  if (stored && Array.isArray(stored.wallets)) {
+    return {
+      wallets: stored.wallets,
+      activeId: stored.activeId ?? stored.wallets[0]?.id ?? null,
+    };
+  }
+
+  // One-time migration from the single-wallet layout. The old record keeps its place as
+  // the active wallet, and the account selection that used to live in settings moves onto
+  // it, so an existing user opens the app exactly where they left it.
+  const legacy = read<ConnectedWallet>(LEGACY_WALLET_KEY);
+  if (!legacy) return EMPTY_STATE;
+  const scoped = loadSettings();
+  const record: WalletRecord = {
+    ...legacy,
+    id: legacy.masterFingerprint,
+    name: legacy.device?.name ?? '硬件钱包',
+    pairedAt: legacy.connectedAt ?? Date.now(),
+    accountIndex: scoped.accountIndex,
+    addressIndex: scoped.addressIndex,
+    visibleAccounts: scoped.visibleAccounts,
+  };
+  const migrated: WalletState = { wallets: [record], activeId: record.id };
+  write(WALLETS_KEY, migrated);
+  storage()?.removeItem(LEGACY_WALLET_KEY);
+  return migrated;
+}
+
+function saveWalletState(state: WalletState): WalletState {
+  write(WALLETS_KEY, state);
+  return state;
+}
+
+/** The active wallet, or the first one if the active id went stale. */
+export function activeWallet(state: WalletState): WalletRecord | null {
+  return state.wallets.find((entry) => entry.id === state.activeId) ?? state.wallets[0] ?? null;
+}
+
+/**
+ * Add or update a wallet, and make it active.
+ *
+ * Re-pairing the same fingerprint updates in place and keeps the user's own name: the
+ * device reports itself as "NetProof Air", and overwriting a name the user chose with the
+ * device's default would undo their work every time they refreshed an account list.
+ */
+export function upsertWallet(wallet: ConnectedWallet, preferred?: Partial<WalletScopedSettings>): WalletState {
+  const state = loadWalletState();
+  const id = wallet.masterFingerprint;
+  const existing = state.wallets.find((entry) => entry.id === id);
+  const defaults = loadSettings();
+  const record: WalletRecord = {
+    ...wallet,
+    id,
+    name: existing?.name ?? wallet.device?.name ?? '硬件钱包',
+    pairedAt: existing?.pairedAt ?? Date.now(),
+    accountIndex: preferred?.accountIndex ?? existing?.accountIndex ?? 0,
+    addressIndex: preferred?.addressIndex ?? existing?.addressIndex ?? 0,
+    visibleAccounts: preferred?.visibleAccounts ?? existing?.visibleAccounts ?? defaults.visibleAccounts,
+  };
+  const wallets = existing
+    ? state.wallets.map((entry) => (entry.id === id ? record : entry))
+    : [...state.wallets, record];
+  return saveWalletState({ wallets, activeId: id });
+}
+
+export function updateWallet(id: string, patch: Partial<WalletRecord>): WalletState {
+  const state = loadWalletState();
+  return saveWalletState({
+    ...state,
+    wallets: state.wallets.map((entry) => (entry.id === id ? { ...entry, ...patch, id: entry.id } : entry)),
+  });
+}
+
+export function selectWallet(id: string): WalletState {
+  const state = loadWalletState();
+  if (!state.wallets.some((entry) => entry.id === id)) return state;
+  return saveWalletState({ ...state, activeId: id });
+}
+
+/**
+ * Forget one wallet.
+ *
+ * The activity log is keyed by address, not by wallet, so it is left alone: a send that
+ * happened is still a fact about the chain, and the user may still be looking at that hash.
+ */
+export function removeWallet(id: string): WalletState {
+  const state = loadWalletState();
+  const wallets = state.wallets.filter((entry) => entry.id !== id);
+  const activeId = state.activeId === id ? (wallets[0]?.id ?? null) : state.activeId;
+  return saveWalletState({ wallets, activeId });
+}
+
+/** Forget everything this app knows about paired wallets, and their approvals. */
+export function clearWallets(): void {
   const area = storage();
   if (!area) return;
-  area.removeItem(WALLET_KEY);
+  area.removeItem(WALLETS_KEY);
+  area.removeItem(LEGACY_WALLET_KEY);
   area.removeItem(ORIGINS_KEY);
   area.removeItem(PENDING_KEY);
 }

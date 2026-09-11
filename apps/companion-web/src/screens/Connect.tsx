@@ -27,7 +27,7 @@ import {
  * reset the transfer every time a progress badge updated.
  */
 export function ConnectScreen(): ReactNode {
-  const { wallet, pair, navigate, show } = useCompanion();
+  const { wallets, pair, navigate, show } = useCompanion();
   const collectorRef = useRef(new FrameCollector('NP-XPUB'));
   const [scanning, setScanning] = useState(true);
   const [preview, setPreview] = useState<XpubExportMessage | null>(null);
@@ -64,7 +64,7 @@ export function ConnectScreen(): ReactNode {
   const confirm = (): void => {
     if (!preview) return;
     pair(walletFromXpubMessage(preview), preview.chainId);
-    show('已导入登录二维码');
+    show('已添加钱包');
     navigate({ name: 'home' });
   };
 
@@ -115,8 +115,7 @@ export function ConnectScreen(): ReactNode {
               <KeyValue label="设备" value={`${preview.device.name} · ${preview.device.model}`} />
               <KeyValue
                 label="BIP39 Passphrase"
-                value={preview.passphraseProtected ? '已启用（每次签名都需在手机上输入）' : '未启用'}
-                tone={preview.passphraseProtected ? 'warn' : undefined}
+                value={preview.passphraseProtected ? '已启用（保存在设备上）' : '未启用'}
               />
               <KeyValue
                 label="根 xpub"
@@ -158,16 +157,8 @@ export function ConnectScreen(): ReactNode {
               </div>
             </div>
 
-            {preview.passphraseProtected ? (
-              <Alert tone="warn" title="这台设备启用了 passphrase">
-                每次签名时都需要在手机上输入 passphrase。请确认你记得它——丢了它，助记词也救不回来。
-              </Alert>
-            ) : null}
-
-            {wallet ? (
-              <Alert tone="info">
-                已配对的钱包将被替换（当前指纹 {wallet.masterFingerprint}）。
-              </Alert>
+            {wallets.some((entry) => entry.id === preview.fingerprint) ? (
+              <Alert tone="info">这个钱包已经配过，会更新它。</Alert>
             ) : null}
           </>
         ) : null}
@@ -177,7 +168,7 @@ export function ConnectScreen(): ReactNode {
         {preview ? (
           <>
             <Button block onClick={confirm}>
-              保存并完成配对
+              添加这个钱包
             </Button>
             <Button variant="ghost" onClick={() => setPreview(null)}>
               重新扫描

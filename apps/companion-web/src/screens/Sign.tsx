@@ -458,8 +458,7 @@ export function SignScreen({ id }: { id: string }): ReactNode {
         <div className="np-card np-card--sunken">
           <div className="np-label">第 1 步 · 让离线设备扫描这个二维码</div>
           <div className="np-body np-body--tight" style={{ marginTop: 6 }}>
-            打开 NetProof Air →「扫描并签名」→ 对准下面的二维码。
-            设备会独立解析并显示同一笔交易的内容；只有当你在**手机屏幕上**确认后才会签名。
+            打开 NetProof Air →「扫描并签名」。设备会独立解析，并由你在手机上确认。
           </div>
         </div>
 

@@ -39,8 +39,16 @@ function shortRpc(url: string | undefined): string {
 }
 
 export function SettingsScreen(): ReactNode {
-  const { settings, updateSettings, wallet, approvedOrigins, dropOrigin, unpair, navigate, activity, clearActivities } =
-    useCompanion();
+  const {
+    settings,
+    updateSettings,
+    wallet,
+    approvedOrigins,
+    dropOrigin,
+    navigate,
+    activity,
+    clearActivities,
+  } = useCompanion();
   const [draft, setDraft] = useState(settings);
   const { toast, show } = useToast();
 
@@ -50,6 +58,28 @@ export function SettingsScreen(): ReactNode {
     <>
       <Header title="设置" onBack={() => navigate({ name: 'home' })} />
       <div className="np-main">
+
+      {/* Wallet first, then the accounts derived from it. Settings used to list the wallet
+          last, under the local-data counters, which put the two levels of the app in the
+          opposite order from the header. */}
+      {wallet ? (
+        <div className="np-card">
+          <div className="np-label">钱包</div>
+          <KeyValue label="当前" value={wallet.name} />
+          <KeyValue label="指纹" value={wallet.masterFingerprint} mono />
+          <div className="np-grid-2" style={{ marginTop: 10 }}>
+            <Button variant="secondary" onClick={() => navigate({ name: 'wallets' })}>
+              切换钱包
+            </Button>
+            <Button variant="secondary" onClick={() => navigate({ name: 'wallets' })}>
+              管理
+            </Button>
+          </div>
+          <Button variant="ghost" size="small" onClick={() => navigate({ name: 'advanced' })}>
+            账户与派生设置
+          </Button>
+        </div>
+      ) : null}
 
       {/*
         Network and RPC node in one card, because they are one decision. Choosing a chain
@@ -105,7 +135,7 @@ export function SettingsScreen(): ReactNode {
           />
         </div>
         <div className="np-body np-body--tight" style={{ marginTop: 8 }}>
-          余额、nonce、gas 都来自这里。公共节点会看到你查询过的所有地址——在意隐私就换成自己的节点。
+          公共节点能看到你查询过的地址。
         </div>
       </div>
 
@@ -135,7 +165,7 @@ export function SettingsScreen(): ReactNode {
       <div className="np-list">
         <button type="button" className="np-list__item" onClick={() => navigate({ name: 'advanced' })}>
           <span className="np-grow">
-            <span className="np-subtitle">高级</span>
+            <span className="np-subtitle">账户与派生</span>
             <span className="np-body np-body--tight" style={{ display: 'block' }}>
               派生方案、地址数量、xpub
             </span>
@@ -168,26 +198,6 @@ export function SettingsScreen(): ReactNode {
           </div>
         </div>
       ) : null}
-
-      {wallet ? (
-        <div className="np-card">
-          <div className="np-label">已连接设备</div>
-          <KeyValue label="设备" value={`${wallet.device.name} · ${wallet.device.model}`} />
-          <KeyValue label="钱包指纹" value={wallet.masterFingerprint} mono />
-          <Button variant="danger-soft" block onClick={unpair}>
-            断开并清除本机数据
-          </Button>
-        </div>
-      ) : null}
-
-      <div className="np-card np-card--sunken">
-        <div className="np-label">这里保存了什么</div>
-        <div className="np-body np-body--tight" style={{ marginTop: 6 }}>
-          xpub、账户名称、设置、活动记录、待处理请求。
-          <br />
-          <span className="np-ink">没有私钥，没有助记词，没有种子，没有密码。</span>
-        </div>
-      </div>
 
       <Button block onClick={() => { updateSettings(draft); show('设置已保存'); }}>
         保存设置

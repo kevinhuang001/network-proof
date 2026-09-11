@@ -8,7 +8,6 @@ import {
   fetchBalance,
   isSolanaChain,
   forwardToNode,
-  listAccounts,
   type ResolvedAccount,
 } from '@netproof/companion';
 import {
@@ -20,7 +19,17 @@ import {
 } from '../lib/tokens';
 import { addToken, loadTokens } from '../lib/store';
 import { useCompanion } from '../App';
-import { Alert, Badge, Button, CopyButton, KeyValue, ProgressBar, Spinner, shortAddress, useToast } from '../ui/kit';
+import {
+  Alert,
+  Badge,
+  Button,
+  CopyButton,
+  Header,
+  KeyValue,
+  Spinner,
+  shortAddress,
+} from '../ui/kit';
+import { ChainLogo } from '../ui/icons';
 
 /**
  * Wallet-shaped screens.
@@ -168,49 +177,6 @@ export function formatAge(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
-/** One asset row, OKX/MetaMask style: badge, name, amount. */
-function TokenRow({
-  symbol,
-  name,
-  amount,
-  label,
-}: {
-  symbol: string;
-  name: string;
-  amount: string;
-  label: string;
-}): ReactNode {
-  return (
-    <div className="np-list__item np-list__item--static">
-      <div
-        style={{
-          width: 38,
-          height: 38,
-          minWidth: 38,
-          borderRadius: 999,
-          background: 'var(--np-bg-sunken)',
-          display: 'grid',
-          placeItems: 'center',
-          fontWeight: 800,
-          fontSize: 13,
-        }}
-      >
-        {symbol.slice(0, 4)}
-      </div>
-      <div className="np-grow" style={{ minWidth: 0 }}>
-        <div className="np-subtitle">{symbol}</div>
-        <div className="np-body np-body--tight" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {name}
-        </div>
-      </div>
-      <div className="np-right">
-        <div className="np-subtitle np-num">{amount}</div>
-        <div className="np-body np-body--tight">{label}</div>
-      </div>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Home
 // ---------------------------------------------------------------------------
@@ -218,24 +184,15 @@ function TokenRow({
 export function HomeScreen(): ReactNode {
   const { wallet, settings, navigate, activity } = useCompanion();
   const { accounts } = useVisibleAccounts();
-  const { native, tokens, error, reload } = usePortfolio();
+  const { native, tokens, error } = usePortfolio();
   const current = accounts[settings.addressIndex] ?? accounts[0];
   const chain = chainMeta(settings.chainId);
   const solana = isSolanaChain(settings.chainId);
-  const total = current ? native[current.address] ?? null : null;
 
   if (!wallet) {
     return (
       <div className="np-main">
-        <div className="np-card np-card--hero">
-          <div className="np-label">观察钱包</div>
-          <div className="np-hero-amount" style={{ marginTop: 8, fontSize: 26 }}>
-            还没有连接设备
-          </div>
-          <p className="np-body" style={{ color: 'rgba(255,255,255,.66)', marginTop: 10 }}>
-            私钥在离线设备上，这里只保存公开的 xpub。扫码把设备加进来，就能查看余额、发起交易。
-          </p>
-        </div>
+        <h2 className="np-headline">还没有连接设备</h2>
         <Button block onClick={() => navigate({ name: 'connect' })}>
           扫码连接硬件钱包
         </Button>
@@ -243,93 +200,71 @@ export function HomeScreen(): ReactNode {
     );
   }
 
+  /*
+   * The assets list *is* the home screen.
+   *
+   * There used to be a black hero card holding the native balance with 发送/接收 buttons
+   * under it, which made ETH look like the wallet and every token look like a footnote.
+   * On every chain this wallet supports, the money is usually in the ERC-20s, and the
+   * native coin is one row among many. Each row opens that asset, which is where sending
+   * and receiving belong — you send a *thing*, not "the wallet".
+   */
+  const assets = [
+    {
+      key: 'native',
+      symbol: chain?.symbol ?? 'ETH',
+      name: chain?.name ?? '原生代币',
+      amount: current ? native[current.address] ?? '—' : '—',
+    },
+    ...tokens.map((entry) => ({
+      key: entry.info.address,
+      symbol: entry.info.symbol,
+      name: entry.info.name,
+      amount: current ? entry.perAccount[current.address] ?? '—' : '—',
+    })),
+  ];
+
   return (
     <div className="np-main">
-      <div className="np-card np-card--hero">
-        <div className="np-row np-row--between">
-          <span className="np-label">{current?.name ?? '账户'}</span>
-          <Badge tone="inverse">{chainLabel(settings.chainId)}</Badge>
-        </div>
-        <div className="np-hero-amount" style={{ marginTop: 10 }}>
-          {total ?? '—'}{' '}
-          <span style={{ fontSize: 18, fontWeight: 600, opacity: 0.6 }}>{chain?.symbol ?? ''}</span>
-        </div>
-        <div className="np-mono" style={{ color: 'rgba(255,255,255,.6)', marginTop: 8 }}>
-          {current ? shortAddress(current.address, 10, 8) : '—'}
-        </div>
-        <div className="np-row" style={{ marginTop: 16, gap: 10 }}>
-          <button
-            type="button"
-            className="np-btn np-btn--small"
-            style={{ background: '#fff', color: '#0B0B0F', flex: 1 }}
-            onClick={() => navigate({ name: 'send' })}
-          >
-            发送
+      <div className="np-row np-row--between">
+        <span className="np-label">资产 · {chainLabel(settings.chainId)}</span>
+        {solana ? null : (
+          <button type="button" className="np-chip" onClick={() => navigate({ name: 'add-token' })}>
+            + 代币
           </button>
-          <button
-            type="button"
-            className="np-btn np-btn--small"
-            style={{ background: 'rgba(255,255,255,.14)', color: '#fff', flex: 1 }}
-            onClick={() => navigate({ name: 'receive' })}
-          >
-            接收
-          </button>
-        </div>
+        )}
       </div>
 
-      <div className="np-alert np-alert--info">
-        <span className="np-alert__icon" aria-hidden>
-          ℹ
-        </span>
-        <div className="np-grow">
-          <span className="np-ink">观察模式</span>：签名必须由「{wallet.device.name}」完成。
-          发起交易时会出现一个二维码，用离线设备扫描并确认，再把签名扫回来即可。
-        </div>
+      <div className="np-list">
+        {assets.map((asset) => (
+          <button
+            type="button"
+            className="np-list__item"
+            key={asset.key}
+            onClick={() =>
+              navigate({ name: 'asset', asset: asset.key, symbol: asset.symbol, label: asset.name })
+            }
+          >
+            <AssetBadge symbol={asset.symbol} chainId={settings.chainId} native={asset.key === 'native'} />
+            <div className="np-grow" style={{ minWidth: 0 }}>
+              <div className="np-subtitle">{asset.symbol}</div>
+              <div
+                className="np-body np-body--tight"
+                style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                {asset.name}
+              </div>
+            </div>
+            <div className="np-subtitle np-num">{asset.amount}</div>
+          </button>
+        ))}
       </div>
 
       {error ? <Alert tone="warn">{error}</Alert> : null}
-
       {solana ? (
         <Alert tone="info">
-          Solana 没有可观察的账户公钥，所以设备导出的是地址本身。发送交易尚未实现。
+          Solana 没有可观察的账户公钥，设备导出的是地址本身。发送交易尚未实现。
         </Alert>
-      ) : null}
-
-      <div className="np-row np-row--between">
-        <span className="np-label">资产 · {chainLabel(settings.chainId)}</span>
-        <div className="np-row" style={{ gap: 6 }}>
-          {solana ? null : (
-            <button type="button" className="np-chip" onClick={() => navigate({ name: 'add-token' })}>
-              + 添加代币
-            </button>
-          )}
-          <button type="button" className="np-chip" onClick={reload}>
-            刷新
-          </button>
-        </div>
-      </div>
-      <div className="np-list">
-        <TokenRow
-          symbol={chain?.symbol ?? 'ETH'}
-          name={chain?.name ?? '原生代币'}
-          amount={current ? native[current.address] ?? '—' : '—'}
-          label={current?.name ?? ''}
-        />
-        {tokens.map((entry) => (
-          <TokenRow
-            key={entry.info.address}
-            symbol={entry.info.symbol}
-            name={entry.info.name}
-            amount={current ? entry.perAccount[current.address] ?? '—' : '—'}
-            label={entry.info.address.slice(0, 10)}
-          />
-        ))}
-      </div>
-      {tokens.length === 0 ? (
-        <div className="np-body np-body--tight np-center">
-          只显示原生代币。ERC-20 代币需要你粘贴合约地址添加——本钱包不内置代币清单，
-          因为任何清单都意味着有第三方知道你持有什么。
-        </div>
       ) : null}
 
       <div className="np-row np-row--between">
@@ -338,10 +273,7 @@ export function HomeScreen(): ReactNode {
       </div>
       {activity.length === 0 ? (
         <div className="np-card np-card--sunken">
-          <div className="np-body np-body--tight">
-            这里会列出**本钱包发起过**的交易。它是一个本地记录，不是链上全量历史——
-            读全量历史需要索引服务，那会把你在看的地址都交给第三方。
-          </div>
+          <div className="np-body np-body--tight">本钱包发起过的交易，本地记录。</div>
         </div>
       ) : (
         <div className="np-list">
@@ -350,9 +282,9 @@ export function HomeScreen(): ReactNode {
               <div className="np-grow">
                 <div className="np-subtitle">
                   {record.kind === 'send' ? '发送' : '合约调用'}
-                  {record.status === 'failed' ? '（广播失败）' : ''}
+                  {record.to ? ` → ${shortAddress(record.to, 6, 4)}` : ''}
                 </div>
-                <div className="np-mono np-ink-3">
+                <div className="np-body np-body--tight">
                   {record.to ? shortAddress(record.to, 8, 6) : '合约部署'} · {formatAge(record.timestamp)}
                 </div>
               </div>
@@ -367,17 +299,107 @@ export function HomeScreen(): ReactNode {
         </div>
       )}
 
-      <div className="np-grid-2">
-        {solana ? null : (
-          <Button variant="secondary" onClick={() => navigate({ name: 'accounts' })}>
-            管理账户
-          </Button>
-        )}
-        <Button variant="ghost" onClick={reload}>
-          刷新余额
+      {solana ? null : (
+        <Button variant="ghost" block onClick={() => navigate({ name: 'wallets' })}>
+          管理账户
         </Button>
-      </div>
+      )}
     </div>
+  );
+}
+
+/** Round asset mark: the chain's logo for the native coin, a symbol chip for a token. */
+function AssetBadge({
+  symbol,
+  chainId,
+  native,
+}: {
+  symbol: string;
+  chainId: number;
+  native: boolean;
+}): ReactNode {
+  if (native) return <ChainLogo chainId={chainId} size={38} />;
+  return (
+    <span
+      style={{
+        width: 38,
+        height: 38,
+        minWidth: 38,
+        borderRadius: 999,
+        background: 'var(--np-bg-sunken)',
+        display: 'grid',
+        placeItems: 'center',
+        fontWeight: 800,
+        fontSize: 12,
+      }}
+    >
+      {symbol.slice(0, 4)}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// One asset: where send and receive actually live
+// ---------------------------------------------------------------------------
+
+export function AssetScreen({
+  asset,
+  symbol,
+  label,
+}: {
+  asset: string;
+  /** Short ticker, and what the header shows. */
+  symbol: string;
+  /** Long name, e.g. "Ethereum Mainnet" or the token's name. */
+  label: string;
+}): ReactNode {
+  const { settings, navigate, wallet } = useCompanion();
+  const { accounts } = useVisibleAccounts();
+  const { native, tokens } = usePortfolio();
+  const current = accounts[settings.addressIndex] ?? accounts[0];
+  const token = asset === 'native' ? null : tokens.find((entry) => entry.info.address.toLowerCase() === asset.toLowerCase());
+  const amount =
+    asset === 'native'
+      ? current
+        ? native[current.address] ?? '—'
+        : '—'
+      : current
+        ? token?.perAccount[current.address] ?? '—'
+        : '—';
+
+  return (
+    <>
+      <Header title={symbol} subtitle={label} onBack={() => navigate({ name: 'home' })} />
+      <div className="np-main">
+        <div className="np-card">
+          <div className="np-label">余额</div>
+          <div className="np-hero-amount" style={{ fontSize: 32, marginTop: 6 }}>
+            {amount}{' '}
+            <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.55 }}>{symbol}</span>
+          </div>
+          <KeyValue label="账户" value={current?.name ?? '—'} />
+          <KeyValue label="地址" value={current ? shortAddress(current.address, 10, 8) : '—'} mono />
+          {token ? <KeyValue label="合约" value={shortAddress(token.info.address, 10, 8)} mono /> : null}
+          {asset !== 'native' && !token ? (
+            <Alert tone="warn">这个代币不在本机列表里，可能是通过链接直接打开的。</Alert>
+          ) : null}
+        </div>
+
+        <div className="np-grid-2">
+          <Button
+            onClick={() =>
+              navigate({ name: 'send', ...(asset === 'native' ? {} : { token: asset }) })
+            }
+            disabled={asset === 'native' ? !wallet : !token}
+          >
+            发送
+          </Button>
+          <Button variant="secondary" onClick={() => navigate({ name: 'receive' })}>
+            接收
+          </Button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -397,10 +419,7 @@ export function ReceiveScreen(): ReactNode {
       <h2 className="np-headline" style={{ fontSize: 22 }}>
         接收
       </h2>
-      <div className="np-body np-body--tight">
-        这是「{current.name}」的收款地址。
-        {current.index > 0 ? '它由设备导出的同一账户派生而来。' : ''}
-      </div>
+      <div className="np-body np-body--tight">「{current.name}」的收款地址</div>
 
       <AddressQr value={current.address} />
 
@@ -459,146 +478,6 @@ function AddressQr({ value }: { value: string }): ReactNode {
 // Accounts (MetaMask-style list)
 // ---------------------------------------------------------------------------
 
-export function AccountsScreen(): ReactNode {
-  const { wallet, settings, updateSettings, navigate, show } = useCompanion();
-  const { accounts } = useVisibleAccounts();
-  const { native } = usePortfolio();
-  const solana = isSolanaChain(settings.chainId);
-  const [renaming, setRenaming] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
-  const { toast, show: toastShow } = useToast();
-
-  if (!wallet) return null;
-
-  const exported = listAccounts(wallet, settings.schemeId);
-  // How many accounts can be revealed at all: for Solana that is however many addresses
-  // the device exported; for EVM it is the exported accounts times the per-account
-  // derivation depth.
-  const maxRevealable = solana
-    ? (wallet.addresses?.length ?? 0)
-    : exported.length * settings.addressCount;
-
-  const addAccount = (): void => {
-    if (settings.visibleAccounts >= maxRevealable) {
-      show('已经显示到这个账户下所有已派生的地址，请到「设置 → 高级」提高派生数量');
-      return;
-    }
-    updateSettings({ visibleAccounts: settings.visibleAccounts + 1 });
-  };
-
-  return (
-    <div className="np-main">
-      <h2 className="np-headline" style={{ fontSize: 22 }}>
-        账户
-      </h2>
-
-      <div className="np-list">
-        {accounts.map((account, index) => (
-          <div key={account.path} className="np-list__item">
-            <button
-              type="button"
-              className="np-icon-btn"
-              style={{
-                background: index === settings.addressIndex ? 'var(--np-ink)' : 'var(--np-bg-sunken)',
-                color: index === settings.addressIndex ? '#fff' : 'var(--np-ink)',
-                fontWeight: 700,
-                border: 0,
-              }}
-              onClick={() => updateSettings({ addressIndex: index })}
-              aria-label={`选择 ${account.name}`}
-            >
-              {account.ordinal}
-            </button>
-            <div className="np-grow" style={{ minWidth: 0 }}>
-              {renaming === account.address ? (
-                <TextField
-                  className="np-input"
-                  style={{ padding: '6px 10px', fontSize: 14 }}
-                  value={draft}
-                  autoFocus
-                  onChange={setDraft}
-                  onBlur={() => {
-                    updateSettings({
-                      accountNames: {
-                        ...settings.accountNames,
-                        [account.address.toLowerCase()]: draft.trim() || account.name,
-                      },
-                    });
-                    setRenaming(null);
-                    toastShow('已重命名');
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
-                  }}
-                />
-              ) : (
-                <button
-                  type="button"
-                  style={{ background: 'none', border: 0, padding: 0, textAlign: 'left', font: 'inherit', color: 'inherit', cursor: 'pointer' }}
-                  onClick={() => {
-                    setRenaming(account.address);
-                    setDraft(account.name);
-                  }}
-                >
-                  <div className="np-subtitle">{account.name} ✎</div>
-                  <div className="np-mono np-ink-3">{shortAddress(account.address, 10, 8)}</div>
-                </button>
-              )}
-              <div className="np-body np-body--tight np-num">
-                {native[account.address] ?? '—'} ·{' '}
-                {account.scheme === 'solana' ? 'Solana 地址' : `账户 ${account.account} · #${account.index}`}
-              </div>
-            </div>
-            {index === settings.addressIndex ? <Badge tone="accent">使用中</Badge> : null}
-          </div>
-        ))}
-      </div>
-
-      <Button block onClick={addAccount}>
-        添加账户
-      </Button>
-      <div className="np-body np-body--tight np-center">
-        已显示 {accounts.length} / {maxRevealable} 个可派生地址
-      </div>
-
-      <Alert tone="info" title="账户从哪来">
-        <div style={{ marginBottom: 6 }}>
-          这里显示的每个账户都是设备导出 xpub 下的一个派生地址。插件
-          <span className="np-ink">无法自行发明新账户</span>——账户级密钥是硬化派生的，公钥推不出来。
-          所以你只能看到设备已经暴露出来的那些。
-        </div>
-        <div className="np-mono" style={{ fontSize: 12 }}>
-          {exported.length} 个账户级 xpub · 每账户派生 {settings.addressCount} 个地址
-        </div>
-      </Alert>
-
-      <div className="np-grid-2">
-        <Button variant="secondary" onClick={() => navigate({ name: 'receive' })}>
-          接收
-        </Button>
-        <Button variant="ghost" onClick={() => navigate({ name: 'settings' })}>
-          账户设置
-        </Button>
-      </div>
-      {toast ? <div className="np-toast">{toast}</div> : null}
-    </div>
-  );
-}
-
-export { KeyValue, ProgressBar };
-
-// ---------------------------------------------------------------------------
-// Add token
-// ---------------------------------------------------------------------------
-
-/**
- * Add an ERC-20 by contract address.
- *
- * The wallet asks the contract what it is instead of consulting a registry. That
- * keeps the token list private (no price or list API sees what this wallet holds)
- * and cannot go stale, at the cost of one paste per token — which is also exactly
- * how the user confirms they are adding the contract they meant to.
- */
 export function AddTokenScreen(): ReactNode {
   const { wallet, settings, navigate, show } = useCompanion();
   const { reload } = usePortfolio();

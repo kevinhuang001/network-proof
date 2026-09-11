@@ -3,6 +3,13 @@ import { TextArea, TextField } from '@netproof/ui/text-field';
 import { useMemo, useState } from 'react';
 import { parseUnits, shortAddress } from '@netproof/core';
 import { chainLabel, fetchBalance, forwardToNode } from '@netproof/companion';
+import { loadTokens } from '../lib/store';
+import {
+  encodeErc20Transfer,
+  fetchTokenBalance,
+  formatTokenAmount,
+  type CallFn,
+} from '../lib/tokens';
 import { useCompanion } from '../App';
 import { Alert, Badge, Button, KeyValue, Spinner } from '../ui/kit';
 import { formatEth, useVisibleAccounts } from './Wallet';
@@ -20,10 +27,28 @@ import { formatEth, useVisibleAccounts } from './Wallet';
  * can actually lose.
  */
 
-export function SendScreen(): ReactNode {
+export function SendScreen({ token: tokenAddress }: { token?: string } = {}): ReactNode {
   const { settings, navigate, wallet, requestSigning, show } = useCompanion();
   const { accounts } = useVisibleAccounts();
   const current = accounts[settings.addressIndex] ?? accounts[0];
+  /*
+   * Sending a token is sending a contract call, not a value transfer: the amount goes in
+   * `transfer(address,uint256)` calldata and `value` stays zero. The device re-parses those
+   * bytes and shows the recipient and the amount on its own screen, so this path produces
+   * the same review the user gets for a plain send — it just builds the payload here
+   * instead of asking them to paste it.
+   */
+  const token = useMemo(
+    () =>
+      tokenAddress
+        ? loadTokens(settings.chainId).find(
+            (entry) => entry.address.toLowerCase() === tokenAddress.toLowerCase(),
+          ) ?? null
+        : null,
+    [tokenAddress, settings.chainId],
+  );
+  const symbol = token?.symbol ?? (settings.chainId === 56 ? 'BNB' : 'ETH');
+  const decimals = token?.decimals ?? 18;
 
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('');
@@ -41,27 +66,54 @@ export function SendScreen(): ReactNode {
   // when it can. It is a convenience, never a gate.
   useMemo(() => {
     if (!current || !rpcUrl) return;
-    void fetchBalance(current.address, { rpcUrl, chainId: settings.chainId }).then(
-      setBalance,
-      () => setBalance(null),
-    );
+    const call: CallFn = (method, params) =>
+      forwardToNode(method, params, { rpcUrl, chainId: settings.chainId });
+    const read = token
+      ? fetchTokenBalance(
+          {
+            address: token.address,
+            symbol: token.symbol,
+            name: token.name,
+            decimals: token.decimals,
+            chainId: token.chainId,
+            native: false,
+          },
+          current.address,
+          call,
+        )
+      : fetchBalance(current.address, { rpcUrl, chainId: settings.chainId });
+    void read.then(setBalance, () => setBalance(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.address, rpcUrl, settings.chainId]);
+  }, [current?.address, rpcUrl, settings.chainId, token?.address]);
 
   const parsed = useMemo(() => {
     if (amount.trim().length === 0) return null;
     try {
-      return parseUnits(amount, 18);
+      return parseUnits(amount, decimals);
     } catch {
       return null;
     }
-  }, [amount]);
+  }, [amount, decimals]);
 
   const addressValid = /^0x[0-9a-fA-F]{40}$/u.test(to.trim());
   const dataValid = /^0x([0-9a-fA-F]{2})*$/u.test(data.trim());
   const amountValid = parsed !== null && parsed > 0n;
   const overBalance = parsed !== null && balance !== null && parsed > balance;
   const isContractCall = data.trim() !== '0x' && data.trim() !== '';
+
+  /**
+   * What actually goes on chain.
+   *
+   * A token send is `transfer(to, amount)` with `value: 0`; a plain send is the value with
+   * empty data. Both end up as one request, so the device reviews exactly one shape.
+   */
+  const call = useMemo(() => {
+    if (token) {
+      if (!addressValid || parsed === null) return null;
+      return { to: token.address, value: 0n, data: encodeErc20Transfer(to.trim(), parsed) };
+    }
+    return { to: to.trim(), value: parsed ?? 0n, data: data.trim() };
+  }, [token, addressValid, parsed, to, data]);
 
   const ready = wallet !== null && current !== undefined && addressValid && dataValid && (amountValid || isContractCall);
 
@@ -73,15 +125,15 @@ export function SendScreen(): ReactNode {
       // Resolve nonce and fees *now*, before the QR, because the offline device has no
       // way to look them up. If the node cannot supply them, fail here rather than
       // putting a half-specified request in front of the user's device.
-      const value = parsed ?? 0n;
+      if (!call) throw new Error('收款地址或金额还不完整');
       const nonce = Number(BigInt((await forward('eth_getTransactionCount', [current.address, 'pending'])) as string));
       const gas = BigInt(
         (await forward('eth_estimateGas', [
           {
             from: current.address,
-            to: to.trim(),
-            value: `0x${value.toString(16)}`,
-            data: data.trim(),
+            to: call.to,
+            value: `0x${call.value.toString(16)}`,
+            data: call.data,
           },
         ])) as string,
       );
@@ -98,9 +150,9 @@ export function SendScreen(): ReactNode {
         params: [
           {
             from: current.address,
-            to: to.trim(),
-            value: `0x${value.toString(16)}`,
-            data: data.trim(),
+            to: call.to,
+            value: `0x${call.value.toString(16)}`,
+            data: call.data,
             nonce: `0x${nonce.toString(16)}`,
             gas: `0x${gas.toString(16)}`,
             maxFeePerGas: `0x${gasPrice.toString(16)}`,
@@ -145,7 +197,8 @@ export function SendScreen(): ReactNode {
         </div>
         <div className="np-mono np-ink-3">{shortAddress(current.address, 10, 8)}</div>
         <div className="np-body np-body--tight" style={{ marginTop: 6 }}>
-          可用 {balance === null ? '—' : formatEth(balance)}
+          可用{' '}
+          {balance === null ? '—' : token ? formatTokenAmount(balance, token.decimals) : formatEth(balance)}
         </div>
       </div>
 
@@ -168,7 +221,7 @@ export function SendScreen(): ReactNode {
 
       <div className="np-field">
         <label className="np-label" htmlFor="send-amount">
-          金额（{settings.chainId === 56 ? 'BNB' : 'ETH'}）
+          金额（{symbol}）
         </label>
         <TextField
           id="send-amount"
@@ -194,8 +247,13 @@ export function SendScreen(): ReactNode {
               type="button"
               className="np-chip"
               onClick={() => {
-                // Leave a little for gas: "MAX" that produces an unaffordable
-                // transaction is a trap, so subtract a modest reserve.
+                // For a token, the whole balance is spendable: gas is paid in the native
+                // coin, not in the token. For the native coin, leave a modest reserve,
+                // because a MAX that produces an unaffordable transaction is a trap.
+                if (token) {
+                  setAmount(formatTokenAmount(balance, token.decimals, token.decimals));
+                  return;
+                }
                 const reserve = 21_000n * 30_000_000_000n;
                 const spendable = balance > reserve ? balance - reserve : 0n;
                 setAmount(formatEth(spendable));
@@ -207,10 +265,12 @@ export function SendScreen(): ReactNode {
         </div>
       </div>
 
-      <Button variant="ghost" size="small" onClick={() => setAdvanced((value) => !value)}>
-        {advanced ? '隐藏高级选项' : '高级选项（合约调用）'}
-      </Button>
-      {advanced ? (
+      {token ? null : (
+        <Button variant="ghost" size="small" onClick={() => setAdvanced((value) => !value)}>
+          {advanced ? '隐藏高级选项' : '高级选项（合约调用）'}
+        </Button>
+      )}
+      {advanced && !token ? (
         <div className="np-field">
           <label className="np-label" htmlFor="send-data">
             Calldata
@@ -225,9 +285,7 @@ export function SendScreen(): ReactNode {
           {!dataValid ? (
             <div className="np-body np-body--tight np-down">calldata 必须是字节对齐的十六进制</div>
           ) : null}
-          <div className="np-body np-body--tight">
-            留空表示普通转账。填写后就是合约调用，设备会尝试解析它并给出风险提示。
-          </div>
+          <div className="np-body np-body--tight">留空即普通转账。</div>
         </div>
       ) : null}
 

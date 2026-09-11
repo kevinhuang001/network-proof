@@ -248,8 +248,7 @@ function ConnectScreen({
               <KeyValue label="设备" value={`${preview.device.name} · ${preview.device.model}`} />
               <KeyValue
                 label="BIP39 Passphrase"
-                value={preview.passphraseProtected ? '已启用（签名时需要）' : '未启用'}
-                tone={preview.passphraseProtected ? 'warn' : undefined}
+                value={preview.passphraseProtected ? '已启用（保存在设备上）' : '未启用'}
               />
               <KeyValue label="根 xpub" value={preview.rootXpub === preview.accounts[0]?.xpub ? '未导出' : '已导出'} />
             </div>
@@ -269,11 +268,6 @@ function ConnectScreen({
                 );
               })}
             </div>
-            {preview.passphraseProtected ? (
-              <Alert tone="warn" title="这台设备启用了 passphrase">
-                每次签名时都需要在手机上输入 passphrase。请确保你记得它。
-              </Alert>
-            ) : null}
           </>
         )}
       </div>

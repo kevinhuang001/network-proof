@@ -6,18 +6,22 @@ import {
 } from '@netproof/companion';
 import { HDKey, buildWalletExport, buildXpubMessage, deriveAddressFromXpub, mnemonicToSeed } from '@netproof/core';
 import {
+  activeWallet,
   approveOrigin,
-  clearWallet,
+  clearWallets,
   getPending,
   loadApprovedOrigins,
   loadPending,
   loadSettings,
-  loadWallet,
+  loadWalletState,
   putPending,
   removePending,
+  removeWallet,
   revokeOrigin,
   saveSettings,
-  saveWallet,
+  selectWallet,
+  updateWallet,
+  upsertWallet,
 } from '../src/lib/store';
 
 /**
@@ -51,14 +55,14 @@ function wallet() {
 
 describe('web companion storage', () => {
   beforeEach(() => {
-    clearWallet();
+    clearWallets();
     window.localStorage.clear();
   });
 
   it('round-trips the paired wallet', () => {
     const paired = wallet();
-    saveWallet(paired);
-    const restored = loadWallet();
+    upsertWallet(paired);
+    const restored = activeWallet(loadWalletState());
     expect(restored?.masterFingerprint).toBe(paired.masterFingerprint);
     expect(restored?.accounts).toHaveLength(paired.accounts.length);
     expect(restored?.schemes.map((scheme) => scheme.id)).toEqual([
@@ -73,7 +77,7 @@ describe('web companion storage', () => {
   });
 
   it('stores nothing secret', () => {
-    saveWallet(wallet());
+    upsertWallet(wallet());
     // Dump the real key/value pairs. (JSON.stringify on the Storage object itself
     // would serialise the adapter's internals, not the stored data.)
     const dump = dumpStorage().toLowerCase();
@@ -96,8 +100,8 @@ describe('web companion storage', () => {
   it('falls back to defaults when storage holds junk', () => {
     window.localStorage.setItem('netproof.companion.settings.v1', '{not json');
     expect(loadSettings().chainId).toBe(DEFAULT_SETTINGS.chainId);
-    window.localStorage.setItem('netproof.companion.wallet.v1', '{not json');
-    expect(loadWallet()).toBeNull();
+    window.localStorage.setItem('netproof.companion.wallets.v1', '{not json');
+    expect(loadWalletState().wallets).toEqual([]);
   });
 
   it('tracks approved origins without duplicates', () => {
@@ -130,8 +134,8 @@ describe('web companion storage', () => {
     expect(getPending('0xabc')).toBeNull();
   });
 
-  it('clears the wallet, its origins and its queue together', () => {
-    saveWallet(wallet());
+  it('clears the wallets, their origins and the queue together', () => {
+    upsertWallet(wallet());
     approveOrigin('https://a.example');
     putPending({
       id: '0x1',
@@ -142,16 +146,70 @@ describe('web companion storage', () => {
       method: 'personal_sign',
       params: [],
     });
-    clearWallet();
-    expect(loadWallet()).toBeNull();
+    clearWallets();
+    expect(loadWalletState().wallets).toEqual([]);
     expect(loadApprovedOrigins()).toEqual([]);
     expect(loadPending()).toEqual([]);
   });
 
+  it('migrates a wallet saved before multiple wallets existed', () => {
+    const paired = wallet();
+    // The layout an existing user has on disk: one wallet under the old key, and the
+    // account selection living in settings.
+    window.localStorage.setItem('netproof.companion.wallet.v1', JSON.stringify(paired));
+    saveSettings({ accountIndex: 0, addressIndex: 3, visibleAccounts: 2 });
+
+    const state = loadWalletState();
+    expect(state.wallets).toHaveLength(1);
+    const migrated = activeWallet(state)!;
+    expect(migrated.id).toBe(paired.masterFingerprint);
+    // The selection moves onto the wallet, so the user opens where they left off.
+    expect(migrated.addressIndex).toBe(3);
+    expect(migrated.visibleAccounts).toBe(2);
+    // And the old key is gone, so the migration runs once.
+    expect(window.localStorage.getItem('netproof.companion.wallet.v1')).toBeNull();
+  });
+
+  it('keeps several wallets, and keeps each one\'s account selection', () => {
+    const first = wallet();
+    const second = { ...wallet(), masterFingerprint: 'deadbeef', device: { name: 'Backup', model: 'test' } };
+
+    upsertWallet(first);
+    upsertWallet(second, { addressIndex: 0, accountIndex: 0, visibleAccounts: 1 });
+    expect(loadWalletState().wallets).toHaveLength(2);
+
+    // The second pairing is active, as a user who just scanned expects.
+    expect(activeWallet(loadWalletState())!.name).toBe('Backup');
+
+    updateWallet(second.masterFingerprint, { addressIndex: 7, visibleAccounts: 4 });
+    selectWallet(first.masterFingerprint);
+    const state = loadWalletState();
+    expect(activeWallet(state)!.id).toBe(first.masterFingerprint);
+    // Switching wallets must not carry the other wallet's account across.
+    expect(activeWallet(state)!.addressIndex).toBe(0);
+    expect(state.wallets.find((entry) => entry.id === second.masterFingerprint)!.addressIndex).toBe(7);
+
+    // Re-pairing updates in place: same fingerprint, no duplicate.
+    upsertWallet(first);
+    expect(loadWalletState().wallets).toHaveLength(2);
+
+    // A name the user chose survives a re-pair, which is exactly when they would lose it.
+    const renamed = updateWallet(first.masterFingerprint, { name: '主钱包' });
+    expect(activeWallet(renamed)!.name).toBe('主钱包');
+    upsertWallet(first);
+    expect(activeWallet(loadWalletState())!.name).toBe('主钱包');
+
+    removeWallet(first.masterFingerprint);
+    const remaining = loadWalletState();
+    expect(remaining.wallets).toHaveLength(1);
+    // Removing the active wallet falls back to the one that is left.
+    expect(activeWallet(remaining)!.name).toBe('Backup');
+  });
+
   it('agrees with the device on derived addresses after a storage round trip', () => {
     const paired = wallet();
-    saveWallet(paired);
-    const restored = loadWallet()!;
+    upsertWallet(paired);
+    const restored = activeWallet(loadWalletState())!;
     const account0 = restored.accounts.find((entry) => entry.scheme === 'bip44' && entry.account === 0)!;
     for (const index of [0, 1, 4]) {
       const expected = deriveAddressFromXpub(account0.xpub, 'bip44', 0, index);

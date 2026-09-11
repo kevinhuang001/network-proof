@@ -202,6 +202,23 @@ export async function fetchTokenBalance(
   return decodeUint(hex(result).replace(/^0x/u, ''));
 }
 
+/**
+ * Calldata for `transfer(address,uint256)`.
+ *
+ * Encoding this by hand is the whole reason an ERC-20 send is possible from an air-gapped
+ * wallet: the *device* re-parses these bytes and shows the recipient and amount on its own
+ * screen, so a wrong selector here would be a transfer the user approved reading something
+ * else. The signature is hashed at runtime rather than pasted in as a constant, so the
+ * selector in the transaction is provably the selector of the string above it.
+ */
+export function encodeErc20Transfer(to: string, amount: bigint): string {
+  if (amount < 0n) throw new Error('转账金额不能为负');
+  if (amount >= 1n << 256n) throw new Error('转账金额超出 uint256');
+  return `0x${selector('transfer(address,uint256)')}${encodeAddress(to)}${amount
+    .toString(16)
+    .padStart(64, '0')}`;
+}
+
 export function nativeToken(chain: ChainMeta): TokenInfo {
   return {
     address: 'native',

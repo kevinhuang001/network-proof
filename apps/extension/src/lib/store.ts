@@ -32,6 +32,15 @@ async function write(key: string, value: unknown): Promise<void> {
   await storage().set({ [key]: value });
 }
 
+/**
+ * NOTE: one wallet only.
+ *
+ * The web companion is the app in use and now holds a *list* of wallets, each with its own
+ * account selection (`apps/companion-web/src/lib/store.ts`). This extension keeps the older
+ * single-wallet model, so pairing a second device here replaces the first. Porting it means
+ * the same storage split, the same `WalletRecord` shape and the same switcher UI; until
+ * that happens, do not treat the two companions as interchangeable.
+ */
 export async function loadWallet(): Promise<ConnectedWallet | null> {
   return read<ConnectedWallet>(WALLET_KEY);
 }
