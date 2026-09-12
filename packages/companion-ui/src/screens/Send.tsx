@@ -380,6 +380,7 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
         feeError={feeError}
         unit={feeSymbol}
         usd={usd}
+        showFiat={settings.showFiat}
         pendingHint="填好收款地址后显示这笔交易的手续费"
       />
 

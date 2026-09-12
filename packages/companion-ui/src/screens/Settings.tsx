@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { CHAINS, chainLabel } from '@netproof/companion';
+import { CHAINS, chainLabel, priceSourceLabels } from '@netproof/companion';
 import { useCompanion } from '../App';
 import { Alert, Badge, Button, Header, KeyValue, PasswordField, Toast, useToast } from '../ui/kit';
 import { ChainLogo } from '../ui/icons';
@@ -142,8 +142,8 @@ export function SettingsScreen(): ReactNode {
           <div>
             <div className="np-subtitle">手续费显示美元估值</div>
             <div className="np-body np-body--tight">
-              按 CoinGecko 现货价折算，失败就什么都不显示。打开时，费率页面会向它发一次请求
-              （对方能看到你的 IP 和所在网络）。
+              {`依次请求 ${priceSourceLabels().join(' → ')}，谁先答就用谁，界面上会写明用了哪一个。`}
+              全部失败就什么都不显示。打开时这些接口能看到你的 IP 和所在网络。
             </div>
           </div>
         </label>

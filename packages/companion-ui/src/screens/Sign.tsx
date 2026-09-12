@@ -29,9 +29,9 @@ import { useCompanion } from '../App';
 import { useSurface } from '../surface';
 import { getPending, removePending } from '../lib/store';
 import { useFeeTiers } from '../lib/fees';
-import { chainShowsFiat, formatUsd, useUsdPrice, usdValue } from '../lib/prices';
-import { FeeSelector } from '../ui/FeeSelector';
-import { formatEth, useVisibleAccounts } from './Wallet';
+import { chainShowsFiat, useUsdPrice } from '../lib/prices';
+import { FeeSelector, LockedFee } from '../ui/FeeSelector';
+import { useVisibleAccounts } from './Wallet';
 import {
   Alert,
   Badge,
@@ -386,7 +386,7 @@ export function SignScreen({ id }: { id: string }): ReactNode {
     const perGas = tx.maxFeePerGas ?? tx.gasPrice;
     return perGas === undefined ? null : BigInt(perGas) * BigInt(tx.gas);
   })();
-  const lockedUsd = lockedFee === null ? null : usdValue(lockedFee, usdPrice);
+
 
   const onText = useCallback(
     (text: string) => {
@@ -667,6 +667,7 @@ export function SignScreen({ id }: { id: string }): ReactNode {
             unit={nativeSymbol(settings.chainId)}
             pendingHint="正在读取这笔交易的 gas"
             usd={usdPrice}
+            showFiat={settings.showFiat}
           />
         ) : null}
 
@@ -686,11 +687,12 @@ export function SignScreen({ id }: { id: string }): ReactNode {
           <>
             {lockedFee !== null ? (
               <div className="np-card np-card--sunken">
-                <KeyValue
-                  label="手续费上限"
-                  value={`${formatEth(lockedFee)} ${nativeSymbol(settings.chainId)}${
-                    lockedUsd === null ? '' : ` ≈ ${formatUsd(lockedUsd)}`
-                  }`}
+                <div className="np-label">手续费上限</div>
+                <LockedFee
+                  wei={lockedFee}
+                  unit={nativeSymbol(settings.chainId)}
+                  quote={usdPrice}
+                  showFiat={settings.showFiat}
                 />
               </div>
             ) : null}

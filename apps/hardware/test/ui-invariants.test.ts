@@ -440,7 +440,7 @@ describe('UI invariants', () => {
       join(repoRoot, 'packages/companion-ui/src/ui/FeeSelector.tsx'),
       'utf8',
     );
-    expect(selector).toContain("usdValue(cost, usd ?? null)");
+    expect(selector).toContain('usdValue(cost, usd?.price ?? null)');
     expect(selector).toMatch(/dollars === null \? '' :/u);
 
     // Only the coin the fee is paid in is ever looked up, and only on real networks.
@@ -449,6 +449,49 @@ describe('UI invariants', () => {
     const lib = readFileSync(join(repoRoot, 'packages/companion-ui/src/lib/prices.ts'), 'utf8');
     expect(lib).toContain('meta.testnet === true');
     expect(lib).toContain('priceableSymbols().includes(meta.symbol)');
+  });
+
+  it('says where the fee and its dollar value came from', () => {
+    /*
+     * Two numbers, two sources, and neither is the wallet's own opinion: the rate is the
+     * chain's latest block, the dollar value is a spot price from whichever public API
+     * answered. A figure with no provenance is a figure the user has to take on faith, which
+     * is the opposite of what this wallet is for.
+     */
+    const selector = readFileSync(
+      join(repoRoot, 'packages/companion-ui/src/ui/FeeSelector.tsx'),
+      'utf8',
+    );
+    // The line names the source that answered, and never claims a price that was not fetched.
+    expect(selector).toContain('export function FeeSourceNote(');
+    expect(selector).toContain('费率来自 RPC 节点最新区块');
+    expect(selector).toContain('${quote.source}');
+    expect(selector).toMatch(/if \(!showFiat \|\| quote === null\)/u);
+
+    // Every screen that shows a fee carries the line: the selector, and the read-only form.
+    expect(selector).toContain('<FeeSourceNote quote={usd ?? null} showFiat={showFiat} />');
+    expect(selector).toContain('<FeeSourceNote quote={quote} showFiat={showFiat} />');
+    const sign = readFileSync(join(repoRoot, 'packages/companion-ui/src/screens/Sign.tsx'), 'utf8');
+    expect(sign).toContain('<LockedFee');
+
+    // The sources that can answer are a fixed, auditable list, and each one is named in the UI.
+    const prices = readFileSync(join(repoRoot, 'packages/companion/src/prices.ts'), 'utf8');
+    for (const host of [
+      'api.coingecko.com',
+      'coins.llama.fi',
+      'api.binance.com',
+      'api.coinbase.com',
+      'api.kraken.com',
+      'api.coinpaprika.com',
+    ]) {
+      expect(prices, `${host} must be one of the price sources`).toContain(host);
+    }
+    // And the settings say which of them will be tried, in order.
+    const settings = readFileSync(
+      join(repoRoot, 'packages/companion-ui/src/screens/Settings.tsx'),
+      'utf8',
+    );
+    expect(settings).toContain('priceSourceLabels().join(');
   });
 
   it('routes every way out of a screen through the router, not around it', () => {
