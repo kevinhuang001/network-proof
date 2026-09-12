@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { TextArea, TextField } from '@netproof/ui/text-field';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { parseUnits, shortAddress } from '@netproof/core';
 import { chainLabel, fetchBalance, forwardToNode } from '@netproof/companion';
 import { tokensForChain } from '../lib/store';
@@ -26,6 +26,31 @@ import { formatEth, useVisibleAccounts } from './Wallet';
  * *worst case* cost (value + gas at the fee cap), because that is the number a user
  * can actually lose.
  */
+
+/**
+ * Turn a node's complaint into something a person can act on.
+ *
+ * `execution reverted` is what a node says when the recipient's own code refused the transfer:
+ * a contract with no payable `receive`, or one that rejects this particular call. Every wallet
+ * shows the raw string, and it tells the user nothing except that wallet is broken — when in
+ * fact the chain is working exactly as designed and the address is the problem.
+ */
+function explainPreparationFailure(error: Error, to: string, isToken: boolean): string {
+  const message = error.message;
+  if (/execution reverted|revert/u.test(message)) {
+    return isToken
+      ? `代币合约拒绝了这笔转账：${to} 的 transfer 调用被回退。请确认代币合约地址与收款地址。`
+      : `${to} 拒绝了这笔转账（execution reverted）。常见原因是这个地址是合约，且它不接受直接转入主链币。` +
+          `如果你要转的是代币，请在资产列表里选择那个代币再发送。`;
+  }
+  if (/insufficient funds/u.test(message)) {
+    return '余额不足以支付金额加手续费。用「最大」可以按当前手续费算出可发的上限。';
+  }
+  if (/nonce/u.test(message)) {
+    return 'nonce 读取失败，稍后重试。';
+  }
+  return `无法准备这笔交易：${message}`;
+}
 
 export function SendScreen({ token: tokenAddress }: { token?: string } = {}): ReactNode {
   const { settings, navigate, wallet, requestSigning, show } = useCompanion();
@@ -57,6 +82,7 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
   const [error, setError] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [balance, setBalance] = useState<bigint | null>(null);
+  const [fee, setFee] = useState<bigint | null>(null);
 
   const rpcUrl = settings.rpcUrls[settings.chainId];
   const forward = (method: string, params: unknown[]) =>
@@ -94,6 +120,36 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
       return null;
     }
   }, [amount, decimals]);
+
+  /*
+   * What a transfer costs right now.
+   *
+   * The "最大" button used to subtract a hard-coded 30 gwei × 21 000 — 0.00063 ETH, a number
+   * chosen on a busy mainnet day. On a cheap chain, or a quiet one, that reserve is many times
+   * the real fee, and the button quietly told the user they could only send a third of what
+   * they hold. The price comes from the node, and the fee is shown rather than assumed.
+   */
+  useEffect(() => {
+    if (!rpcUrl) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const price = BigInt((await forward('eth_gasPrice', [])) as string);
+        const priority = await forward('eth_maxPriorityFeePerGas', [])
+          .then((value) => BigInt(value as string))
+          .catch(() => price);
+        // A plain transfer costs exactly 21 000 gas; a contract call may cost more, which is
+        // why the estimate on the final transaction still wins at submit time.
+        if (!cancelled) setFee(21_000n * (price > priority ? price : priority));
+      } catch {
+        if (!cancelled) setFee(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rpcUrl, settings.chainId]);
 
   const addressValid = /^0x[0-9a-fA-F]{40}$/u.test(to.trim());
   const dataValid = /^0x([0-9a-fA-F]{2})*$/u.test(data.trim());
@@ -164,7 +220,7 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
       show('请用离线设备扫描二维码');
       navigate({ name: 'sign', id });
     } catch (caught) {
-      setError(`无法准备这笔交易：${(caught as Error).message}`);
+      setError(explainPreparationFailure(caught as Error, to.trim(), token !== null));
     } finally {
       setPreparing(false);
     }
@@ -203,6 +259,8 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
         <div className="np-body np-body--tight" style={{ marginTop: 6 }}>
           可用{' '}
           {balance === null ? '—' : token ? formatTokenAmount(balance, token.decimals) : formatEth(balance)}
+          {token ? '' : ` ${symbol}`}
+          {fee !== null && !token ? ` · 预计手续费 ${formatEth(fee)} ${symbol}` : ''}
         </div>
       </div>
 
@@ -255,10 +313,11 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
                 // coin, not in the token. For the native coin, leave a modest reserve,
                 // because a MAX that produces an unaffordable transaction is a trap.
                 if (token) {
+                  // Gas is paid in the native coin, so the whole token balance is spendable.
                   setAmount(formatTokenAmount(balance, token.decimals, token.decimals));
                   return;
                 }
-                const reserve = 21_000n * 30_000_000_000n;
+                const reserve = fee ?? 21_000n * 30_000_000_000n;
                 const spendable = balance > reserve ? balance - reserve : 0n;
                 setAmount(formatEth(spendable));
               }}
