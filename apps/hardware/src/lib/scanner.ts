@@ -41,15 +41,29 @@ const NO_SIGNAL_AFTER_MS = 3000;
  */
 const SAMPLE_AFTER_MS = 5000;
 
+/** The snapshot is a thumbnail: it is displayed by the phone that is doing the decoding. */
+const SAMPLE_SIDE = 240;
+
 /**
- * The square the user is told to fill, as a fraction of the sampled square.
+ * Which pixels of a camera frame to hand the decoder.
  *
- * The reticle is 72% of the viewfinder, so that is where the code is when the user does what the
- * screen says. Sampling that region first halves the pixels the decoder has to chew through —
- * which, on a phone that manages about one decode a second, is one more attempt a second.
- * The full square is still tried when the reticle fails, for a code held off-centre.
+ * The whole frame, reduced only when it is too large to decode in a reasonable time. Cropping used
+ * to be the optimisation here, and it was the bug: a preview and the frames a WebView gives
+ * `drawImage` can disagree about orientation and cropping, so a centre square was somewhere else
+ * on the screen than the square the user was aiming at. There is nothing to gain by being clever
+ * about where the code is when the decoder can simply be given all of it.
  */
-const RETICLE_FRACTION = 0.72;
+export function frameSampleSize(
+  width: number,
+  height: number,
+  maxPixels = FRAME_MAX_PIXELS,
+): { width: number; height: number } {
+  if (width <= 0 || height <= 0) return { width: 0, height: 0 };
+  const pixels = width * height;
+  if (pixels <= maxPixels) return { width, height };
+  const scale = Math.sqrt(maxPixels / pixels);
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+}
 
 /**
  * The largest crop handed to the decoder in the thorough mode.
@@ -61,6 +75,15 @@ const RETICLE_FRACTION = 0.72;
  * read if it were only fed the pixels it has. This is the ceiling for the escalation.
  */
 const DETAIL_CROP_MAX = 1080;
+
+/**
+ * The most pixels one decode attempt may work on.
+ *
+ * 1080×1920 is 2.07 megapixels, which jsQR manages on an old phone in a fraction of a second; the
+ * cap is here for a camera that reports something far larger, where the attempt would cost longer
+ * than the frame it is looking at.
+ */
+const FRAME_MAX_PIXELS = 2_400_000;
 
 /**
  * How far the scan has actually got.
@@ -239,116 +262,94 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
     if (now - lastScanAt < intervalMs) return;
     lastScanAt = now;
     try {
-      const side = Math.min(video.videoWidth, video.videoHeight);
-      if (side === 0) return;
-      const sx = (video.videoWidth - side) / 2;
-      const sy = (video.videoHeight - side) / 2;
       /*
-       * Start cheap and get thorough, rather than the reverse.
+       * Everything the camera delivers, not a square carved out of the middle.
        *
-       * Two things change in the thorough mode, and both were failures of the cheap one:
-       *
-       *   - `dontInvert` is half the work of `attemptBoth` and is right for a dark code on a
-       *     light screen, which is what both apps display. A strongly lit or reflective screen
-       *     can invert a code's apparent polarity, though, and "cannot scan it at all" is a
-       *     much worse outcome than doubling the cost of a decode that is not succeeding.
-       *   - the crop is no longer downscaled. Feeding a 1080-line frame into a 480-pixel
-       *     square is where a dense code's modules go to die.
+       * The square was the bug. A preview on a phone can disagree with the frames a WebView hands
+       * to `drawImage` about orientation and cropping, and when it does, a centre square is a
+       * region somewhere else entirely: the user's report was 「镜头放在二维码的上面好多才可以
+       * 识别到」 — the only way to get the code into the sampled square was to aim well above it.
+       * A decoder that samples the whole frame does not care where the picture is; jsQR finds a
+       * code anywhere in an image, at any rotation, and the frame is 2 megapixels, which one
+       * attempt per frame can afford now that the code is static and there is no race to lose.
        */
+      const { width: sampleWidth, height: sampleHeight } = frameSampleSize(
+        video.videoWidth,
+        video.videoHeight,
+      );
+      if (sampleWidth === 0 || sampleHeight === 0) return;
+      if (canvas.width !== sampleWidth || canvas.height !== sampleHeight) {
+        canvas.width = sampleWidth;
+        canvas.height = sampleHeight;
+      }
+      const scale = sampleWidth / video.videoWidth;
+      // Smoothing is the correct way to reduce an image, and must stay off at 1:1 where there is
+      // nothing to interpolate.
+      context.imageSmoothingEnabled = scale < 1;
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight, 0, 0, sampleWidth, sampleHeight);
+      const image = context.getImageData(0, 0, sampleWidth, sampleHeight);
+
       const elapsed = Date.now() - openedAt;
       const robust = !decodedAny && elapsed > ROBUST_DECODE_AFTER_MS;
       if (robust && !toldSearching) {
         toldSearching = true;
-        // Nothing has decoded after live video started. That is a fact worth reporting while
-        // the user is still holding the phone, not after they give up.
+        // Nothing has decoded after live video started. Worth saying while the user is still
+        // holding the phone, not after they give up.
         report('searching');
       }
+
       /*
-       * Sample the middle square at the camera's own resolution.
-       *
-       * There used to be a "fast" mode that shrank this to 480 first, with smoothing off, on
-       * the theory that fewer pixels is cheaper. Two things were wrong with it. Shrinking a
-       * periodic image with nearest-neighbour sampling is not a smaller picture of a QR code,
-       * it is a moiré pattern — measured against a simulated camera, it failed on codes the
-       * smoothed path read. And the pixels it threw away are exactly the ones a phone camera
-       * has least of: at 480, a code filling the frame lands at four pixels per module, and
-       * four is where jsQR stops.
+       * A picture of the input, once the scan has been failing long enough for someone to be
+       * wondering why. Small and JPEG, because it is drawn by the same phone that is decoding.
        */
-      /*
-       * Two windows, reticle first.
-       *
-       * `draw` returns the sampled image and how many source pixels it covers, so the caller can
-       * try the second window only if the first found nothing.
-       */
-      const draw = (fraction: number): { image: ImageData; source: number } => {
-        const source = Math.max(16, Math.round(side * fraction));
-        const crop = Math.min(source, DETAIL_CROP_MAX);
-        if (canvas.width !== crop) {
-          canvas.width = crop;
-          canvas.height = crop;
+      let sample: string | null = null;
+      if (!decodedAny && elapsed > SAMPLE_AFTER_MS && now - lastSampleAt > 1000 && previewContext) {
+        lastSampleAt = now;
+        preview.width = SAMPLE_SIDE;
+        preview.height = SAMPLE_SIDE;
+        previewContext.imageSmoothingEnabled = true;
+        previewContext.drawImage(
+          canvas,
+          0,
+          0,
+          sampleWidth,
+          sampleHeight,
+          0,
+          0,
+          SAMPLE_SIDE,
+          SAMPLE_SIDE,
+        );
+        try {
+          sample = preview.toDataURL('image/jpeg', 0.6);
+        } catch {
+          sample = null;
         }
-        // Smoothing is the *correct* way to reduce an image, and must stay off at 1:1 where
-        // there is nothing to interpolate.
-        context.imageSmoothingEnabled = crop < source;
-        context.imageSmoothingQuality = 'high';
-        const left = sx + (side - source) / 2;
-        const top = sy + (side - source) / 2;
-        context.drawImage(video, left, top, source, source, 0, 0, crop, crop);
-        return { image: context.getImageData(0, 0, crop, crop), source };
-      };
+      }
 
-      let { image, source: crop } = draw(RETICLE_FRACTION);
-
-      /*
-       * How the frame looks, before asking whether it contains a code.
-       *
-       * A covered lens, a frozen preview and a code that is merely dense produce the same
-       * silence from jsQR, and the user can only act on the first two if we name them.
-       */
       frames += 1;
       /*
        * Measure the code while waiting for it.
        *
        * Every 400 ms, and only until something decodes: this is the sentence the user needs
-       * ("closer" or "not the distance"), and it is the difference between a screen that is
-       * silent and one that tells them which way to move.
+       * ("closer" or "not the distance"), and it is the difference between a screen that is silent
+       * and one that tells them which way to move.
        */
       if (!decodedAny && now - lastFinderAt > 400) {
         lastFinderAt = now;
-        const gray = grayscale(image.data, crop * crop);
-        const estimate = estimateFinder(gray, crop, crop);
-        lastSharpness = sharpness(gray, crop, crop);
+        const gray = grayscale(image.data, sampleWidth * sampleHeight);
+        const estimate = estimateFinder(gray, sampleWidth, sampleHeight);
+        lastSharpness = sharpness(gray, sampleWidth, sampleHeight);
         /*
-         * Focus first. A picture too soft to hold a code is one that no advice about distance can
-         * help, and "the size is fine" would send the user looking in the wrong place — which is
-         * exactly what happened.
+         * Focus before distance. A picture too soft to hold a code is one that no advice about
+         * distance can help, and "the size is fine" would send the user looking in the wrong place
+         * — which is exactly what happened.
          */
-        const advice =
-          lastSharpness < SHARP_ENOUGH && elapsed > ROBUST_DECODE_AFTER_MS ? 'FOCUS' : sizeAdvice(estimate);
-        /*
-         * A picture of the input, every second or so, once the scan has been failing long enough
-         * for someone to be wondering why. Small (240px) and JPEG, because this is drawn on the
-         * same phone that is trying to decode.
-         */
-        let sample: string | null = null;
-        if (elapsed > SAMPLE_AFTER_MS && now - lastSampleAt > 1000 && previewContext) {
-          lastSampleAt = now;
-          const side240 = 240;
-          preview.width = side240;
-          preview.height = side240;
-          previewContext.imageSmoothingEnabled = true;
-          previewContext.drawImage(canvas, 0, 0, image.width, image.height, 0, 0, side240, side240);
-          try {
-            sample = preview.toDataURL('image/jpeg', 0.6);
-          } catch {
-            sample = null;
-          }
-        }
-
+        const advice = lastSharpness < SHARP_ENOUGH && robust ? 'FOCUS' : sizeAdvice(estimate);
         if (advice !== lastAdvice || sample !== null) {
           lastAdvice = advice;
           report(
-            elapsed > ROBUST_DECODE_AFTER_MS ? 'searching' : 'live',
+            robust ? 'searching' : 'live',
             estimate,
             advice === 'FOCUS' ? 'FOCUS' : null,
             sample,
@@ -367,40 +368,28 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
         inversionAttempts: robust ? 'attemptBoth' : 'dontInvert',
       });
 
-      /*
-       * Enlarge before giving up.
-       *
-       * jsQR's locating and thresholding both work in pixels, and a code under about three
-       * pixels per module is not found at any cost. Interpolation cannot invent detail, but it
-       * does give the binarizer the pixels it wants to see: against a simulated camera this
-       * rescued codes at 2.5 pixels per module that were unreadable as they stood.
-       *
-       * Only for small crops: enlarging a 1080-pixel square fourfold would cost seconds of
-       * decoding for a code that already had every pixel it needed.
-       */
-      if (!result && !decodedAny) {
-        // The code may be outside the reticle — the user may be holding it high or low. Half a
-        // second of decoding is worth it before telling them to move.
-        if (crop < side) {
-          const wider = draw(1);
-          image = wider.image;
-          crop = wider.source;
-          result = jsQR(image.data, image.width, image.height, {
-            inversionAttempts: robust ? 'attemptBoth' : 'dontInvert',
-          });
+      if (!result && robust && !decodedAny) {
+        /*
+         * One enlarged attempt, for a code that occupies few pixels.
+         *
+         * jsQR's locating and thresholding both work in pixels, and a code under about three
+         * pixels per module is not found at any cost. Interpolation cannot invent detail, but it
+         * gives the binarizer the pixels it wants: against a simulated camera this rescued codes
+         * at 2.5 pixels per module that were unreadable as they stood. Only when the frame is
+         * small enough for the result to still be cheap.
+         */
+        const enlarged2 = frameSampleSize(sampleWidth * 2, sampleHeight * 2);
+        if (enlarged2.width * enlarged2.height <= DETAIL_CROP_MAX * DETAIL_CROP_MAX * 4 && enlargedContext) {
+          enlarged.width = enlarged2.width;
+          enlarged.height = enlarged2.height;
+          enlargedContext.imageSmoothingEnabled = true;
+          enlargedContext.imageSmoothingQuality = 'high';
+          enlargedContext.drawImage(canvas, 0, 0, sampleWidth, sampleHeight, 0, 0, enlarged2.width, enlarged2.height);
+          const bigger = enlargedContext.getImageData(0, 0, enlarged2.width, enlarged2.height);
+          result = jsQR(bigger.data, bigger.width, bigger.height, { inversionAttempts: 'attemptBoth' });
         }
       }
 
-      if (!result && robust && crop * 2 <= DETAIL_CROP_MAX && enlargedContext) {
-        const target = crop * 2;
-        enlarged.width = target;
-        enlarged.height = target;
-        enlargedContext.imageSmoothingEnabled = true;
-        enlargedContext.imageSmoothingQuality = 'high';
-        enlargedContext.drawImage(canvas, 0, 0, crop, crop, 0, 0, target, target);
-        const bigger = enlargedContext.getImageData(0, 0, target, target);
-        result = jsQR(bigger.data, target, target, { inversionAttempts: 'attemptBoth' });
-      }
       if (!result || result.data.length === 0) return;
       decodedFrames += 1;
       decodedAny = true;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cameraInfo, looksLikeFrontCamera, pickRearCameraId } from '../src/lib/camera';
-import { scanHint } from '../src/lib/scanner';
+import { frameSampleSize, scanHint } from '../src/lib/scanner';
 import type { FrameCollectorProgress } from '@netproof/core';
 
 /**
@@ -107,4 +107,34 @@ describe('what the scan screen says', () => {
     expect(scanHint({ status: { phase: 'searching', info: null }, progress: progress(1) })).toBe('1/12 分片');
   });
 
+});
+
+describe('which pixels go to the decoder', () => {
+  /*
+   * The bug this pins down, reported from the phone: 「镜头放在二维码的上面好多才可以识别到」.
+   * The scanner sampled a square carved out of the middle of the frame; on that phone the preview
+   * and the frames handed to `drawImage` disagreed about where the middle was, so the only way to
+   * get the code into the sampled region was to aim well above it. The sampler now takes the whole
+   * frame, and this is the arithmetic of that decision.
+   */
+  it('takes the whole frame when it is a sane size', () => {
+    // The camera in the report: portrait, 2.07 megapixels.
+    expect(frameSampleSize(1080, 1920)).toEqual({ width: 1080, height: 1920 });
+    expect(frameSampleSize(640, 480)).toEqual({ width: 640, height: 480 });
+    // Non-square stays non-square: jsQR takes a width and a height, and squashing the picture to
+    // fit an old assumption about shape is how the code gets destroyed.
+    expect(frameSampleSize(1920, 1080)).toEqual({ width: 1920, height: 1080 });
+  });
+
+  it('reduces only a frame too large to decode, and keeps its shape', () => {
+    const huge = frameSampleSize(4000, 3000);
+    expect(huge.width * huge.height).toBeLessThanOrEqual(2_400_000 * 1.02);
+    expect(huge.width / huge.height).toBeCloseTo(4000 / 3000, 2);
+    expect(huge.width).toBeLessThan(4000);
+  });
+
+  it('refuses to make a picture out of nothing', () => {
+    expect(frameSampleSize(0, 0)).toEqual({ width: 0, height: 0 });
+    expect(frameSampleSize(1080, 0)).toEqual({ width: 0, height: 0 });
+  });
 });

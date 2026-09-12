@@ -907,11 +907,21 @@ body {
   pointer-events: none;
 }
 
+/*
+ * The whole viewfinder is the reading area.
+ *
+ * It used to be a 72% square with everything outside it darkened, which told the user where to put
+ * the code — and the decoder, sampling a square of its own, disagreed about where that was. The
+ * report was 「镜头放在二维码的上面好多才可以识别到」: the only way to land the code in the
+ * sampled square was to aim above it. The decoder now reads the entire frame, so the guide is a
+ * thin frame around the whole picture with corner marks, and it means what it says: anything you
+ * can see here can be read.
+ */
 .np-scan-frame {
-  width: 72%;
-  aspect-ratio: 1;
+  width: 100%;
+  height: 100%;
   border-radius: var(--np-radius-md);
-  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.28);
   position: relative;
 }
 
