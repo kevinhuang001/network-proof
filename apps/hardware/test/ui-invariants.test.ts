@@ -398,6 +398,59 @@ describe('UI invariants', () => {
     expect(send).not.toMatch(/chainId === 56/u);
   });
 
+  it('keeps the two signing steps apart and the fee out of reach while signing', () => {
+    /*
+     * Three rules, each one a correction of something that was wrong:
+     *
+     *   1. The QR (what the device reads) and the camera (what reads the device) are
+     *      sequential. Both on screen at once meant a camera pointing at a screen that was
+     *      still waiting for the phone.
+     *   2. The fee belongs to the confirmation step. Next to a QR it can be changed after the
+     *      transaction has been laid out as final — the code on screen and the bytes signed
+     *      would then disagree, which the device would (correctly) refuse, after the user had
+     *      already approved it on the phone.
+     *   3. A request whose price was already chosen — the send form chooses one — is not asked
+     *      twice.
+     */
+    const sign = readFileSync(join(repoRoot, 'packages/companion-ui/src/screens/Sign.tsx'), 'utf8');
+    const send = readFileSync(join(repoRoot, 'packages/companion-ui/src/screens/Send.tsx'), 'utf8');
+
+    // Step 2 is behind the button, and the camera runs only there.
+    expect(sign).toContain("active: state.step === 'outgoing' && stageNow === 'scan'");
+    expect(sign).toContain("onClick={() => setStage('scan')}");
+    expect(sign).toContain("stageNow === 'scan' ? (");
+
+    // The confirmation step holds the price and nothing scannable; the code step holds the
+    // code and no price to change.
+    expect(sign).toContain("stageNow === 'review' && message?.kind === 'tx'");
+    expect(sign).toContain("stageNow === 'review' ? null : (");
+
+    // The send form sets the price, and says so, so the signing screen does not ask again.
+    expect(send).toContain('feeLocked: true');
+    expect(sign).toContain('request.feeLocked !== true');
+  });
+
+  it('shows a dollar figure only when there is a real price for it', () => {
+    /*
+     * The price comes from a third party, so it can fail, and the failure must be silence.
+     * A stale or defaulted number next to a fee is worse than no number: "≈ $0.00" on a real
+     * transaction reads as free.
+     */
+    const selector = readFileSync(
+      join(repoRoot, 'packages/companion-ui/src/ui/FeeSelector.tsx'),
+      'utf8',
+    );
+    expect(selector).toContain("usdValue(cost, usd ?? null)");
+    expect(selector).toMatch(/dollars === null \? '' :/u);
+
+    // Only the coin the fee is paid in is ever looked up, and only on real networks.
+    const prices = readFileSync(join(repoRoot, 'packages/companion/src/prices.ts'), 'utf8');
+    expect(prices).toContain('api.coingecko.com');
+    const lib = readFileSync(join(repoRoot, 'packages/companion-ui/src/lib/prices.ts'), 'utf8');
+    expect(lib).toContain('meta.testnet === true');
+    expect(lib).toContain('priceableSymbols().includes(meta.symbol)');
+  });
+
   it('routes every way out of a screen through the router, not around it', () => {
     // The Android back button is handled by the router, which owns the screen stack. A screen
     // that navigates by any other means — a raw history call, a fragment link — would move the

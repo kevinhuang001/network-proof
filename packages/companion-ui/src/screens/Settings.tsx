@@ -133,6 +133,23 @@ export function SettingsScreen(): ReactNode {
       </div>
 
       <div className="np-card">
+        <label className="np-switch">
+          <input
+            type="checkbox"
+            checked={draft.showFiat}
+            onChange={(event) => setDraft({ ...draft, showFiat: event.target.checked })}
+          />
+          <div>
+            <div className="np-subtitle">手续费显示美元估值</div>
+            <div className="np-body np-body--tight">
+              按 CoinGecko 现货价折算，失败就什么都不显示。打开时，费率页面会向它发一次请求
+              （对方能看到你的 IP 和所在网络）。
+            </div>
+          </div>
+        </label>
+      </div>
+
+      <div className="np-card">
         <div className="np-label">本机数据</div>
         <KeyValue label="已记录活动" value={`${activity.length} 条`} />
         <KeyValue label="已授权站点" value={`${approvedOrigins.length} 个`} />

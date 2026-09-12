@@ -3,6 +3,7 @@ import { tierCost } from '@netproof/companion';
 import type { FeeTier } from '@netproof/companion';
 import { formatEth } from '../screens/Wallet';
 import { busyLabel } from '../lib/fees';
+import { formatUsd, usdValue } from '../lib/prices';
 
 /**
  * 慢 / 标准 / 快, with what each one costs for this particular transaction.
@@ -22,6 +23,8 @@ export function FeeSelector({
   feeError,
   unit,
   pendingHint,
+  /** Spot price of `unit` in dollars, or null when there is none to show. */
+  usd,
 }: {
   tiers: FeeTier[];
   tierId: FeeTier['id'];
@@ -34,10 +37,14 @@ export function FeeSelector({
   unit: string;
   /** What to say while the cost cannot be shown yet. */
   pendingHint: string;
+  usd?: number | null;
 }): ReactNode {
   const chosen = tiers.find((entry) => entry.id === tierId) ?? tiers[1] ?? null;
   const cost = chosen === null || gas === null ? null : tierCost(chosen, gas);
   const busy = busyLabel(load);
+  // The dollar figure rides with the number it is derived from, and is silent when there is
+  // no price: an invented or stale one is worse than none.
+  const dollars = cost === null ? null : usdValue(cost, usd ?? null);
 
   return (
     <div className="np-field">
@@ -46,6 +53,7 @@ export function FeeSelector({
         {cost !== null ? (
           <span className="np-body np-body--tight np-num">
             预计 {formatEth(cost)} {unit}
+            {dollars === null ? '' : ` ≈ ${formatUsd(dollars)}`}
           </span>
         ) : null}
       </div>

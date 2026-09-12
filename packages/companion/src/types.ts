@@ -143,6 +143,13 @@ export interface CompanionSettings {
   qrFrameDurationMs: number;
   /** Broadcast automatically once the device returns a valid signed payload. */
   autoBroadcast: boolean;
+  /**
+   * Whether fees are also shown in dollars.
+   *
+   * Turning it off stops the wallet from making its only outbound request that is not an
+   * RPC call to the user's own node.
+   */
+  showFiat: boolean;
 }
 
 export type PendingKind = 'connect' | 'sendTransaction' | 'signTransaction' | 'personal_sign' | 'signTypedData';
@@ -156,6 +163,15 @@ export interface PendingRequest {
   /** The exact EIP-1193 method, for display and for the response shape. */
   method: string;
   params: unknown[];
+  /**
+   * True when the fee was already chosen before the request was made.
+   *
+   * The send form picks a price and puts it in the transaction it hands over, so the approval
+   * screen must not ask again: a wallet that offers the same choice twice invites the user to
+   * change it after they have already read a total. A request from a dApp has no such history,
+   * which is why *that* path gets a confirmation step with the fee on it.
+   */
+  feeLocked?: boolean;
 }
 
 /** JSON-RPC error codes we produce ourselves (EIP-1193 / EIP-1474 conventions). */

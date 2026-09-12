@@ -5,6 +5,7 @@ import { parseUnits, shortAddress } from '@netproof/core';
 import { chainLabel, fetchBalance, forwardToNode, nativeSymbol, tierCost } from '@netproof/companion';
 import { tokensForChain } from '../lib/store';
 import { useFeeTiers } from '../lib/fees';
+import { chainShowsFiat, useUsdPrice } from '../lib/prices';
 import {
   encodeErc20Transfer,
   fetchTokenBalance,
@@ -96,6 +97,7 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
     rpcUrl,
     chainId: settings.chainId,
   });
+  const usd = useUsdPrice(feeSymbol, settings.showFiat && chainShowsFiat(settings.chainId));
 
   // Load the balance lazily, so the form appears instantly and the number arrives
   // when it can. It is a convenience, never a gate.
@@ -235,6 +237,9 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
       if (!fields) throw new Error('还没有读到当前费率，请稍后重试');
 
       const id = requestSigning({
+        // The price was chosen in this form, so the signing screen shows it and cannot change
+        // it: it is the number the user already read next to the amount.
+        feeLocked: true,
         kind: 'sendTransaction',
         origin: '本机钱包（发送）',
         chainId: settings.chainId,
@@ -374,6 +379,7 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
         load={load}
         feeError={feeError}
         unit={feeSymbol}
+        usd={usd}
         pendingHint="填好收款地址后显示这笔交易的手续费"
       />
 

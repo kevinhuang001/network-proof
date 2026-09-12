@@ -11,6 +11,7 @@ export * from './settings';
 export * from './storage';
 export * from './tokens';
 export * from './fees';
+export * from './prices';
 export * from './accounts';
 export * from './jsonrpc';
 export * from './node';

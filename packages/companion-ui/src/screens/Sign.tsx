@@ -29,8 +29,9 @@ import { useCompanion } from '../App';
 import { useSurface } from '../surface';
 import { getPending, removePending } from '../lib/store';
 import { useFeeTiers } from '../lib/fees';
+import { chainShowsFiat, formatUsd, useUsdPrice, usdValue } from '../lib/prices';
 import { FeeSelector } from '../ui/FeeSelector';
-import { useVisibleAccounts } from './Wallet';
+import { formatEth, useVisibleAccounts } from './Wallet';
 import {
   Alert,
   Badge,
@@ -94,6 +95,19 @@ export function SignScreen({ id }: { id: string }): ReactNode {
    * phone. So the code is taken away while the new one is built.
    */
   const [rebuilding, setRebuilding] = useState(false);
+  /**
+   * How far along the signing is, once there is something to sign.
+   *
+   * `null` means "not chosen yet", and the default is derived from the request: a transaction
+   * a site asked for is confirmed first — that is where its price is chosen — while a request
+   * whose fee the send form already set, or one with no fee at all, goes straight to the code.
+   *
+   * The two steps are sequential on purpose. The QR is what the device reads and the camera
+   * is what reads the device back; showing both at once meant a user aiming a camera at a
+   * screen that was still waiting for them, and it meant a fee could be changed after the
+   * transaction had already been displayed as final.
+   */
+  const [stage, setStage] = useState<'review' | 'code' | 'scan' | null>(null);
   const evmRequestRef = useRef<EvmTransactionRequest | null>(null);
   const collectorRef = useRef(new FrameCollector('NP-SIG'));
   /** False until the request has been turned into a message once. */
@@ -116,6 +130,10 @@ export function SignScreen({ id }: { id: string }): ReactNode {
    * the device signs are built from the same numbers.
    */
   const fee = useFeeTiers({ rpcUrl: settings.rpcUrls[settings.chainId], chainId: settings.chainId });
+  const usdPrice = useUsdPrice(
+    nativeSymbol(settings.chainId),
+    settings.showFiat && chainShowsFiat(settings.chainId),
+  );
   /**
    * Whether the chain has answered yet, and which choice the user has made.
    *
@@ -344,6 +362,32 @@ export function SignScreen({ id }: { id: string }): ReactNode {
   const activeRequest =
     state.step === 'outgoing' || state.step === 'verifying' ? state.request : null;
 
+  /*
+   * Which part of the flow is on screen.
+   *
+   * A transaction a *site* asked for is confirmed first, and that is where its price is
+   * chosen; a transaction whose fee was already set — the send form does that — has nothing
+   * left to decide and opens on the code. Chosen values win from then on: once the user is
+   * scanning, the fee is what it is.
+   */
+  const needsReview =
+    outgoing !== null && outgoing.message.kind === 'tx' && outgoing.request.feeLocked !== true;
+  const stageNow: 'review' | 'code' | 'scan' = stage ?? (needsReview ? 'review' : 'code');
+
+  /*
+   * What this transaction will pay, read back out of the request that was built.
+   *
+   * Not from the price screen: that keeps polling the node, and a number that moves after the
+   * bytes were fixed is a number that disagrees with what the device is signing.
+   */
+  const lockedFee = ((): bigint | null => {
+    const tx = outgoing?.message.tx;
+    if (!tx) return null;
+    const perGas = tx.maxFeePerGas ?? tx.gasPrice;
+    return perGas === undefined ? null : BigInt(perGas) * BigInt(tx.gas);
+  })();
+  const lockedUsd = lockedFee === null ? null : usdValue(lockedFee, usdPrice);
+
   const onText = useCallback(
     (text: string) => {
       const collector = collectorRef.current;
@@ -369,7 +413,10 @@ export function SignScreen({ id }: { id: string }): ReactNode {
   );
 
   const { videoRef, state: scanState, error: cameraError } = useQrScanner({
-    active: state.step === 'outgoing',
+    // Only on step 2. A camera that opens while the user is still showing the device a code is
+    // a camera that costs battery and attention to no purpose — and on some phones it takes
+    // the screen.
+    active: state.step === 'outgoing' && stageNow === 'scan',
     expectedType: 'NP-SIG',
     onText,
   });
@@ -554,9 +601,11 @@ export function SignScreen({ id }: { id: string }): ReactNode {
       <div className="np-main">
         <div className="np-row np-row--between">
           <h2 className="np-headline" style={{ fontSize: 20 }}>
-            {activeRequest?.kind === 'personal_sign' || activeRequest?.kind === 'signTypedData'
-              ? '扫码签名消息'
-              : '扫码签名交易'}
+            {stageNow === 'review'
+              ? '确认交易'
+              : activeRequest?.kind === 'personal_sign' || activeRequest?.kind === 'signTypedData'
+                ? '扫码签名消息'
+                : '扫码签名交易'}
           </h2>
           <Badge tone="warn">需要离线设备</Badge>
         </div>
@@ -603,17 +652,21 @@ export function SignScreen({ id }: { id: string }): ReactNode {
         {/*
           A dApp can put any price in its request; this is where the user takes it back. A
           contract call often moves nothing at all, so the fee is the entire cost of it.
+
+          Only here, and never again: the price is part of the bytes the device signs, and a
+          choice offered next to a QR is a choice that can change what is already being signed.
         */}
-        {message?.kind === 'tx' ? (
+        {stageNow === 'review' && message?.kind === 'tx' ? (
           <FeeSelector
             tiers={fee.tiers}
             tierId={fee.tierId}
             onSelect={fee.select}
-            gas={message.tx ? BigInt(message.tx.gas) : null}
+            gas={BigInt(message.tx?.gas ?? '21000')}
             load={fee.load}
             feeError={fee.feeError}
             unit={nativeSymbol(settings.chainId)}
             pendingHint="正在读取这笔交易的 gas"
+            usd={usdPrice}
           />
         ) : null}
 
@@ -629,39 +682,76 @@ export function SignScreen({ id }: { id: string }): ReactNode {
           </div>
         ) : null}
 
-        <div className="np-card np-card--sunken">
-          <div className="np-label">第 1 步 · 让离线设备扫描这个二维码</div>
-          <div className="np-body np-body--tight" style={{ marginTop: 6 }}>
-            打开 NetProof Air →「扫描并签名」。设备会独立解析，并由你在手机上确认。
-          </div>
-        </div>
+        {stageNow === 'review' ? null : (
+          <>
+            {lockedFee !== null ? (
+              <div className="np-card np-card--sunken">
+                <KeyValue
+                  label="手续费上限"
+                  value={`${formatEth(lockedFee)} ${nativeSymbol(settings.chainId)}${
+                    lockedUsd === null ? '' : ` ≈ ${formatUsd(lockedUsd)}`
+                  }`}
+                />
+              </div>
+            ) : null}
 
-        {rebuilding ? (
-          <Alert tone="info" title="正在按新的手续费重建请求">
-            二维码暂时取下：价格变了，要签的交易也变了，旧的那张不能再扫。
-          </Alert>
-        ) : frames.length > 0 ? (
-          <QrDisplay
-            frames={frames}
-            frameDurationMs={settings.qrFrameDurationMs}
-            caption="用离线手机扫描这个二维码"
-          />
-        ) : null}
+            <div className="np-card np-card--sunken">
+              <div className="np-label">第 1 步 · 让离线设备扫描这个二维码</div>
+              <div className="np-body np-body--tight" style={{ marginTop: 6 }}>
+                打开 NetProof Air →「扫描并签名」。设备会独立解析，并由你在手机上确认。
+              </div>
+            </div>
 
-        <hr className="np-divider" />
-        <div className="np-label">第 2 步 · 扫描手机的签名结果</div>
-        <CameraPanel
-          videoRef={videoRef}
-          hint={scanState.hint}
-          solved={scanState.solved}
-          total={scanState.total}
-          error={cameraError}
-        />
-        <Alert tone="info">
-          手机确认签名后会显示签名二维码，用这个摄像头扫描它。校验通过后会自动广播（可在设置里关闭）。
-        </Alert>
+            {rebuilding ? (
+              <Alert tone="info" title="正在按新的手续费重建请求">
+                二维码暂时取下：价格变了，要签的交易也变了，旧的那张不能再扫。
+              </Alert>
+            ) : frames.length > 0 ? (
+              <QrDisplay
+                frames={frames}
+                frameDurationMs={settings.qrFrameDurationMs}
+                caption="用离线手机扫描这个二维码"
+              />
+            ) : null}
+
+            {/*
+              Step 2 appears when the user says step 1 is done. Both at once meant a camera
+              pointing at a screen that was still waiting, and no moment at which the
+              transaction became final.
+            */}
+            {stageNow === 'scan' ? (
+              <>
+                <hr className="np-divider" />
+                <div className="np-label">第 2 步 · 扫描手机的签名结果</div>
+                <CameraPanel
+                  videoRef={videoRef}
+                  hint={scanState.hint}
+                  solved={scanState.solved}
+                  total={scanState.total}
+                  error={cameraError}
+                />
+                <Alert tone="info">
+                  手机确认签名后会显示签名二维码，用这个摄像头扫描它。校验通过后会自动广播（可在设置里关闭）。
+                </Alert>
+              </>
+            ) : null}
+          </>
+        )}
       </div>
       <div className="np-footer">
+        {stageNow === 'review' ? (
+          <Button
+            block
+            disabled={rebuilding || message === null}
+            onClick={() => setStage('code')}
+          >
+            下一步
+          </Button>
+        ) : stageNow === 'code' ? (
+          <Button block disabled={rebuilding} onClick={() => setStage('scan')}>
+            下一步
+          </Button>
+        ) : null}
         <Button
           variant="ghost"
           onClick={() => {

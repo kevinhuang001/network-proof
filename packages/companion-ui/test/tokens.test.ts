@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { chainShowsFiat, formatUsd, usdValue } from '../src/lib/prices';
 import {
   decodeString,
   decodeUint,
@@ -141,5 +142,35 @@ describe('inspectToken', () => {
     await expect(
       inspectToken('0x0000000000000000000000000000000000000003', 1, absurd),
     ).rejects.toThrow(/decimals 不合理/);
+  });
+});
+
+describe('a fee in dollars', () => {
+  it('converts wei at a spot price, exactly enough for a dollar figure', () => {
+    // 21 000 gas at 30 gwei: the number the send screen used to hard-code.
+    expect(usdValue(630_000_000_000_000n, 3000)).toBeCloseTo(1.89, 10);
+    expect(usdValue(1_000_000_000_000_000_000n, 3000)).toBe(3000);
+    expect(usdValue(4_200_000_000_000n, 3000)).toBeCloseTo(0.0126, 10);
+    // No price is not a price of zero.
+    expect(usdValue(630_000_000_000_000n, null)).toBeNull();
+  });
+
+  it('never shows a fee that looks free', () => {
+    // Rounds to nothing but is not nothing: "$0.00" next to a real fee reads as free.
+    expect(formatUsd(0.004)).toBe('<$0.01');
+    expect(formatUsd(1.8899999)).toBe('$1.89');
+    expect(formatUsd(12.6)).toBe('$12.60');
+    expect(formatUsd(1234.56)).toBe('$1,235');
+    expect(formatUsd(0)).toBe('$0');
+    expect(formatUsd(Number.NaN)).toBe('$0');
+  });
+
+  it('has no dollar figure for a chain whose coin is not money', () => {
+    expect(chainShowsFiat(1)).toBe(true);
+    expect(chainShowsFiat(137)).toBe(true);
+    // Sepolia ether cannot be sold, so a dollar figure next to its fee would be invented.
+    expect(chainShowsFiat(11155111)).toBe(false);
+    // Solana is not EVM and is not in the price table either.
+    expect(chainShowsFiat(501)).toBe(false);
   });
 });

@@ -37,6 +37,13 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
   qrFragmentLength: 300,
   qrFrameDurationMs: 420,
   autoBroadcast: true,
+  /**
+   * Show what a fee is worth in dollars.
+   *
+   * On by default, because "0.00042 ETH" is not a number anyone can judge, and off is one
+   * switch away for anyone who would rather not have the wallet talk to a price API at all.
+   */
+  showFiat: true,
 };
 
 export interface ChainMeta {
@@ -47,6 +54,13 @@ export interface ChainMeta {
   /** Decimals of the native coin. 18 on every chain this wallet supports. */
   decimals: number;
   explorerUrl: string;
+  /**
+   * A chain whose coin is not money.
+   *
+   * Testnet ether has no price, and printing a dollar figure next to a Sepolia fee would be
+   * inventing one — the same number as mainnet ETH, for a coin nobody can sell.
+   */
+  testnet?: boolean;
 }
 
 export const CHAINS: ChainMeta[] = [
@@ -57,7 +71,7 @@ export const CHAINS: ChainMeta[] = [
   { chainId: 8453, name: 'Base', shortName: 'Base', symbol: 'ETH', decimals: 18, explorerUrl: 'https://basescan.org' },
   { chainId: 42161, name: 'Arbitrum One', shortName: 'Arbitrum', symbol: 'ETH', decimals: 18, explorerUrl: 'https://arbiscan.io' },
   { chainId: 43114, name: 'Avalanche C-Chain', shortName: 'Avalanche', symbol: 'AVAX', decimals: 18, explorerUrl: 'https://snowtrace.io' },
-  { chainId: 11155111, name: 'Sepolia Testnet', shortName: 'Sepolia', symbol: 'ETH', decimals: 18, explorerUrl: 'https://sepolia.etherscan.io' },
+  { chainId: 11155111, name: 'Sepolia Testnet', shortName: 'Sepolia', symbol: 'ETH', decimals: 18, explorerUrl: 'https://sepolia.etherscan.io', testnet: true },
   { chainId: 501, name: 'Solana', shortName: 'Solana', symbol: 'SOL', decimals: 9, explorerUrl: 'https://solscan.io' },
 ];
 
