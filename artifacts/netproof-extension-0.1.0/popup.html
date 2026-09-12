@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NetProof Companion</title>
+    <!--
+      An action popup is sized from its content, and `width: 100%` gives a browser nothing to
+      size from: the window collapses to whatever the narrowest child demands — a spinner, on
+      the loading frame, is about twenty pixels wide. So the popup states its own size.
+    -->
+    <style>
+      /* The whole wallet runs here, so it gets a wallet's window: 360px wide (a phone) and
+         tall enough for the asset list, with the app's own sheets scrolling inside it. */
+      html,
+      body {
+        width: 360px;
+        height: 560px;
+        margin: 0;
+      }
+
+      /* The document scrolls. `overflow: hidden` here — to avoid a double scrollbar — made
+         every screen taller than the window unreachable, which is most of Settings. */
+      body {
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/popup-CsEoz2IG.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/browser-store-DazCe4mK.js">
+    <link rel="stylesheet" crossorigin href="/assets/browser-store-KVx1BY2q.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Loader-level compatibility floor; see public/compat.js. -->
+    <script src="./compat.js"></script>
+  </body>
+</html>

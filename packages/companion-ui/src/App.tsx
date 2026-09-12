@@ -48,6 +48,7 @@ import { ConnectScreen } from './screens/Connect';
 import { StartScreen } from './screens/Start';
 import { SignScreen } from './screens/Sign';
 import { AddressesScreen } from './screens/Addresses';
+import { SetPasscodeScreen } from './screens/SetPasscode';
 import {
   ActivityScreen,
   AddTokenScreen,
@@ -81,6 +82,7 @@ export type Route =
   | { name: 'asset'; asset: string }
   | { name: 'activity' }
   | { name: 'addresses' }
+  | { name: 'set-passcode'; required: boolean }
   | { name: 'send'; token?: string }
   | { name: 'receive'; token?: string }
   | { name: 'add-token' }
@@ -141,6 +143,7 @@ function parseRoute(hash: string): Route {
   if (path.startsWith('/connect')) return { name: 'connect' };
   if (path.startsWith('/activity')) return { name: 'activity' };
   if (path.startsWith('/addresses')) return { name: 'addresses' };
+  if (path.startsWith('/set-passcode')) return { name: 'set-passcode', required: false };
   if (path.startsWith('/asset/')) {
     return { name: 'asset', asset: path.slice('/asset/'.length) || 'native' };
   }
@@ -231,7 +234,14 @@ function CompanionProvider({ children }: { children: ReactNode }): ReactNode {
 
   useEffect(() => {
     refresh();
-    setRoute(parseRoute(window.location.hash));
+    /*
+     * A wallet without a passcode is asked for one before anything else — including a wallet
+     * paired by an earlier version, which had the option of skipping it. The requirement is
+     * about the state the wallet is in, not about the flow that created it.
+     */
+    const state = loadWalletState();
+    const needsPasscode = state.wallets.length > 0 && loadPasscode() === null;
+    setRoute(needsPasscode ? { name: 'set-passcode', required: true } : parseRoute(window.location.hash));
     setReady(true);
     const onHash = (): void => setRoute(parseRoute(window.location.hash));
     window.addEventListener('hashchange', onHash);
@@ -242,7 +252,9 @@ function CompanionProvider({ children }: { children: ReactNode }): ReactNode {
     const hash =
       next.name === 'sign'
         ? `#/sign/${next.id}`
-        : next.name === 'asset'
+        : next.name === 'set-passcode'
+          ? '#/set-passcode'
+          : next.name === 'asset'
           ? `#/asset/${next.asset}`
           : next.name === 'send' && next.token
             ? `#/send/${next.token}`
@@ -506,6 +518,9 @@ function Shell(): ReactNode {
       {route.name === 'connect' ? <ConnectScreen /> : null}
       {route.name === 'activity' ? <ActivityScreen /> : null}
       {route.name === 'addresses' ? <AddressesScreen /> : null}
+      {route.name === 'set-passcode' ? (
+        <SetPasscodeScreen required={route.required} />
+      ) : null}
       {route.name === 'asset' ? <AssetScreen asset={route.asset} /> : null}
       {route.name === 'send' ? (
         <SendScreen {...(route.token !== undefined ? { token: route.token } : {})} />

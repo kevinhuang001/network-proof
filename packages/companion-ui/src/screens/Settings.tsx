@@ -259,7 +259,7 @@ function PasscodeSection(): ReactNode {
     <div className="np-card">
       <div className="np-label">锁屏密码</div>
       <div className="np-body np-body--tight" style={{ marginTop: 6 }}>
-        锁屏只遮挡界面，不加密数据——本机存的地址仍可被能读取本机存储的人看到。
+        必设，可修改。锁屏只遮挡界面，不加密数据——本机存的地址仍可被能读取本机存储的人看到。
       </div>
       <div className="np-stack" style={{ marginTop: 12 }}>
         {hasPasscode ? (
@@ -268,28 +268,16 @@ function PasscodeSection(): ReactNode {
         <PasswordField value={next} onChange={setNext} placeholder="新密码（至少 6 位）" />
         <PasswordField value={confirm} onChange={setConfirm} placeholder="再输一次" />
         {error ? <Alert tone="danger">{error}</Alert> : null}
-        {/* Three peer actions, three identical buttons. A different variant for one of
-            them implies a hierarchy that is not there — and reads as "this one is the
-            real one", which is the opposite of what a row of alternatives should say. */}
         <div className="np-grid-2">
+          {/* No "remove the passcode": a wallet is required to have one, and offering to take
+              it away would undo the requirement the pairing flow just enforced. Changing it is
+              the supported direction. */}
           <Button variant="secondary" onClick={save}>
             {hasPasscode ? '修改密码' : '设置密码'}
           </Button>
-          {hasPasscode ? (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setPasscode(null);
-                show('已取消密码');
-              }}
-            >
-              取消密码
-            </Button>
-          ) : (
-            <Button variant="secondary" onClick={lock}>
-              立即锁定
-            </Button>
-          )}
+          <Button variant="secondary" onClick={lock} disabled={!hasPasscode}>
+            立即锁定
+          </Button>
         </div>
       </div>
       <Toast message={toast} />

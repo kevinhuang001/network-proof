@@ -29,7 +29,7 @@ import {
  * reset the transfer every time a progress badge updated.
  */
 export function ConnectScreen(): ReactNode {
-  const { wallets, pair, navigate, show } = useCompanion();
+  const { wallets, pair, navigate, show, hasPasscode } = useCompanion();
   const surface = useSurface();
   const collectorRef = useRef(new FrameCollector('NP-XPUB'));
   const [scanning, setScanning] = useState(true);
@@ -71,7 +71,11 @@ export function ConnectScreen(): ReactNode {
     if (!preview) return;
     pair(walletFromXpubMessage(preview), preview.chainId, name.trim() || undefined);
     show('已添加钱包');
-    navigate({ name: 'home' });
+    // The first wallet has to be given a passcode before it can be used. It is not a
+    // suggestion: a companion wallet with no lock is readable by anyone who opens the browser,
+    // and that decision is made once, here, rather than left for a later settings screen the
+    // user may never open.
+    navigate(hasPasscode ? { name: 'home' } : { name: 'set-passcode', required: true });
   };
 
   // A popup cannot hold a camera prompt: it closes the moment it loses focus, and the

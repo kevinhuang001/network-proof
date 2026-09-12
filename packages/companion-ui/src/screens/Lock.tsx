@@ -9,11 +9,11 @@ import { createPasscodeRecord, type PasscodeRecord } from '../lib/lock';
  *
  * Two shapes, and the difference is stated rather than hidden behind a padlock icon:
  *
- *  - With a passcode: entering it unlocks. The passcode is verified by an Argon2id
- *    derivation, and it is never stored.
- *  - Without one: there is nothing to verify, so unlocking is one tap — and the screen says
- *    plainly that the lock only hides the view. Pretending otherwise would be the kind of
- *    false assurance that gets a wallet left open on a shared machine.
+ *  - With a passcode: entering it unlocks. Verified by an Argon2id derivation; the passcode
+ *    itself is never stored.
+ *  - Without one: a wallet that has never had one is asked to set it, here and now. A wallet
+ *    holding addresses that is one tap from being read by whoever picks up the machine is not
+ *    a wallet anyone chose; that is what the pairing flow requires one at the door.
  */
 export function LockScreen({
   hasPasscode,
@@ -44,6 +44,7 @@ export function LockScreen({
     }, 16);
   };
 
+  /** First passcode. There is no way past this screen without one. */
   const setFirst = (): void => {
     if (value !== confirm) {
       setError('两次输入不一致');
@@ -85,14 +86,14 @@ export function LockScreen({
           </>
         ) : (
           <>
-            <p className="np-body np-body--tight" style={{ maxWidth: 280 }}>
-              还没有设密码。现在解锁只需点一下——锁定只是把界面遮住，任何人都能打开。
+            <p className="np-body np-body--tight" style={{ maxWidth: 300 }}>
+              给这个钱包设一个锁定密码。之后可以改，但不能不设。
             </p>
             <div className="np-stack" style={{ width: '100%' }}>
               <PasswordField
                 value={value}
                 onChange={setValue}
-                placeholder="设一个密码（至少 6 位）"
+                placeholder="密码（至少 6 位）"
               />
               <PasswordField value={confirm} onChange={setConfirm} placeholder="再输一次" />
               {error ? <Alert tone="danger">{error}</Alert> : null}
@@ -107,14 +108,9 @@ export function LockScreen({
             {busy ? <Spinner /> : '解锁'}
           </Button>
         ) : (
-          <>
-            <Button block disabled={busy || value.length < 6} onClick={setFirst}>
-              {busy ? <Spinner /> : '设置密码并解锁'}
-            </Button>
-            <Button variant="ghost" block onClick={() => onUnlock('')}>
-              不设密码，直接解锁
-            </Button>
-          </>
+          <Button block disabled={busy || value.length < 6} onClick={setFirst}>
+            {busy ? <Spinner /> : '设置密码并解锁'}
+          </Button>
         )}
       </div>
     </div>

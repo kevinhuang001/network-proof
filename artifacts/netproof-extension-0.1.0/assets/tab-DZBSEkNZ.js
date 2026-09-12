@@ -1,0 +1,1 @@
+import{c as r,m as s}from"./browser-store-DazCe4mK.js";(async()=>{const e=await r();s({storage:e,surface:{kind:"page",resolveRequest:(o,a)=>{chrome.runtime.sendMessage({type:"approval-result",id:o,...a})}}})})();
