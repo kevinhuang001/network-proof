@@ -451,6 +451,26 @@ describe('UI invariants', () => {
     expect(lib).toContain('priceableSymbols().includes(meta.symbol)');
   });
 
+  it('keeps a transfer code inside the layout it lives in', () => {
+    /*
+     * The code was briefly allowed to break out of the app's phone-width column on desktop —
+     * 520 pixels against a 420-pixel column — on the theory that more screen pixels means more
+     * camera pixels per module. Reported immediately, and rightly: the fix for a hard-to-scan
+     * code belongs in the code's density, not in making one card wider than the page it sits on.
+     */
+    const theme = readFileSync(join(repoRoot, 'packages/ui/src/theme.css'), 'utf8');
+    expect(theme).not.toContain('np-qr-stage--large');
+    const stage = ruleBody(theme, '.np-qr-stage');
+    expect(stage).toContain('padding: 12px');
+    // The canvas fills whatever the stage is, with no width of its own to overflow with.
+    const canvas = ruleBody(theme, '.np-qr-stage canvas');
+    expect(canvas).toContain('width: 100%');
+    expect(canvas).not.toContain('max-width');
+
+    const kit = readFileSync(join(repoRoot, 'packages/companion-ui/src/ui/kit.tsx'), 'utf8');
+    expect(kit).toContain('className="np-qr-stage"');
+  });
+
   it('says where the fee and its dollar value came from', () => {
     /*
      * Two numbers, two sources, and neither is the wallet's own opinion: the rate is the

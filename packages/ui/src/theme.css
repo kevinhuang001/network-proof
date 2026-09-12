@@ -944,7 +944,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  /*
+   * 12 rather than 20: every pixel of this card is a pixel of code, and the code carries its own
+   * four-module quiet zone inside the canvas, so the card does not need to provide one.
+   */
+  padding: 12px;
   background: #ffffff;
   border-radius: var(--np-radius-lg);
   border: 1px solid var(--np-line);
@@ -953,36 +957,19 @@ body {
 .np-qr-stage canvas {
   width: 100%;
   height: auto;
-  max-width: 360px;
   display: block;
   image-rendering: pixelated;
 }
 
 /*
- * A transfer code gets to be bigger than the phone-width column.
+ * The code fills the stage, and the stage is the layout.
  *
- * Every pixel of a QR code on this screen is a pixel the other device's camera has to resolve,
- * and the layout is phone-sized even on a desktop. A code that fills 520 pixels instead of 305
- * is 1.7× the modules across, which is 2.9× the area per module as far as that camera is
- * concerned — and the phone holds the same distance from the screen either way.
- *
- * Only for a real desktop-class pointer: in the extension's 360-pixel popup, and on a phone,
- * the stage keeps filling what it has. `transform` rather than a negative margin, so the
- * centring does not depend on the column width.
+ * It briefly broke out to 520px on desktop, on the theory that a bigger code is more pixels per
+ * module for the camera. It is — and it looked wrong: a square wider than the app's own column,
+ * in a layout that is deliberately phone-sized everywhere. The camera's pixels are better spent
+ * on the density of the code (fewer modules per frame) than on making the page shout, and the
+ * device now measures the code and says 「拿近一点」 when it needs to.
  */
-@media (min-width: 520px) and (hover: hover) and (pointer: fine) {
-  .np-qr-stage--large {
-    position: relative;
-    left: 50%;
-    width: 520px;
-    max-width: none;
-    transform: translateX(-50%);
-  }
-}
-
-.np-qr-stage--large canvas {
-  max-width: 100%;
-}
 
 .np-qr-caption {
   text-align: center;

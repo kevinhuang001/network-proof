@@ -251,7 +251,7 @@ export function QrDisplay({
 
   return (
     <div className="np-stack">
-      <div className="np-qr-stage np-qr-stage--large">
+      <div className="np-qr-stage">
         <canvas ref={canvasRef} aria-label="二维码" />
       </div>
       <div className="np-row np-row--between">
