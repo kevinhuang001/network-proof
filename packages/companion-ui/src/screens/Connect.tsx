@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   FrameCollector,
   buildXpubMessage,
@@ -7,6 +7,7 @@ import {
   type FrameCollectorProgress,
   type XpubExportMessage,
 } from '@netproof/core';
+import { deriveAddressFromXpub } from '@netproof/core';
 import { walletFromXpubMessage } from '@netproof/companion';
 import { TextField } from '@netproof/ui/text-field';
 import { useCompanion } from '../App';
@@ -37,6 +38,26 @@ export function ConnectScreen(): ReactNode {
   // A paired wallet is a named thing — with several, "NetProof Air" repeated three times
   // tells the user nothing about which one they are looking at.
   const [name, setName] = useState('');
+
+  /*
+   * The first few addresses, derived from the exported key.
+   *
+   * This used to list `preview.accounts`, which is the *export* — one key now, so one row,
+   * next to a heading that promised three. The addresses a user recognises are the key's
+   * children, and showing them is also the first proof that the derivation works.
+   */
+  const firstAddresses = useMemo(() => {
+    if (!preview) return [];
+    const account = preview.accounts.find((entry) => entry.scheme === 'bip44');
+    if (!account) return [];
+    return [0, 1, 2].flatMap((index) => {
+      try {
+        return [deriveAddressFromXpub(account.xpub, 'bip44', 0, index, account.xpubPath)];
+      } catch {
+        return [];
+      }
+    });
+  }, [preview]);
   const [error, setError] = useState<string | null>(null);
 
   const onText = useCallback((text: string) => {
@@ -69,7 +90,7 @@ export function ConnectScreen(): ReactNode {
 
   const confirm = (): void => {
     if (!preview) return;
-    pair(walletFromXpubMessage(preview), preview.chainId, name.trim() || undefined);
+    pair(walletFromXpubMessage(preview), preview.chainId, name.trim());
     show('已添加钱包');
     // The first wallet has to be given a passcode before it can be used. It is not a
     // suggestion: a companion wallet with no lock is readable by anyone who opens the browser,
@@ -135,8 +156,11 @@ export function ConnectScreen(): ReactNode {
 
         {preview ? (
           <>
+            {/* The fingerprint is the identity; the device's own name is the scanner's
+                name for itself, which the user just scanned and is about to replace with a
+                name of their own. */}
             <Alert tone="up" title="读取成功">
-              指纹 {preview.fingerprint} · {preview.device.name}
+              指纹 {preview.fingerprint}
             </Alert>
 
             {/*
@@ -149,40 +173,34 @@ export function ConnectScreen(): ReactNode {
               address they did not recognise.
             */}
             <div className="np-card">
-              <div className="np-label">钱包名称</div>
+              {/* Required, and left empty on purpose: a default would be accepted without
+                  being read, and with two devices paired "NetProof Air" twice is no name. */}
+              <div className="np-label">钱包名称（必填）</div>
               <TextField
                 className="np-input"
                 style={{ marginTop: 8 }}
                 value={name}
                 maxLength={24}
-                placeholder={preview.device.name}
+                placeholder="例如：主钱包"
                 onChange={setName}
               />
             </div>
 
             <div className="np-card">
               <KeyValue label="派生路径" value="m/44'/60'/0'/0/i" mono />
-              <KeyValue
-                label="BIP39 Passphrase"
-                value={preview.passphraseProtected ? '已启用（保存在设备上）' : '未启用'}
-              />
-              <KeyValue label="根 xpub" value={preview.rootXpub === preview.accounts[0]?.xpub ? '未导出' : '已导出'} />
             </div>
 
             <div className="np-card">
               <div className="np-label">前 3 个地址</div>
               <div className="np-list" style={{ marginTop: 8 }}>
-                {preview.accounts
-                  .filter((entry) => entry.scheme === 'bip44')
-                  .slice(0, 3)
-                  .map((account) => (
-                    <div className="np-list__item np-list__item--static" key={account.xpubPath}>
-                      <div className="np-grow">
-                        <div className="np-mono">{short(account.firstAddress, 10, 8)}</div>
-                        <div className="np-body np-body--tight">{account.firstAddressPath}</div>
-                      </div>
+                {firstAddresses.map((entry) => (
+                  <div className="np-list__item np-list__item--static" key={entry.path}>
+                    <div className="np-grow">
+                      <div className="np-mono">{short(entry.address, 10, 8)}</div>
+                      <div className="np-body np-body--tight">{entry.path}</div>
                     </div>
-                  ))}
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -196,7 +214,7 @@ export function ConnectScreen(): ReactNode {
       <div className="np-footer">
         {preview ? (
           <>
-            <Button block onClick={confirm}>
+            <Button block disabled={name.trim().length === 0} onClick={confirm}>
               添加这个钱包
             </Button>
             <Button variant="secondary" onClick={() => setPreview(null)}>
