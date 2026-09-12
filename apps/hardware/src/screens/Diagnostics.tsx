@@ -31,9 +31,20 @@ const PHASE_LABEL: Record<ScanPhase, string> = {
   frozen: '画面卡住不动',
 };
 
+declare const __NP_BUILD__: string;
+
 function CameraCard(): ReactNode {
   const report = lastScanReport();
-  if (report === null) return null;
+  if (report === null) {
+    return (
+      <div className="np-card">
+        <div className="np-label">版本</div>
+        <div className="np-body np-body--tight np-num" style={{ marginTop: 6 }}>
+          {__NP_BUILD__}
+        </div>
+      </div>
+    );
+  }
   const info = report.info;
   return (
     <div className="np-card">
@@ -62,6 +73,17 @@ function CameraCard(): ReactNode {
           {report.estimate ? `${report.estimate.modulePx.toFixed(1)} 像素` : '没测到'}
         </span>
       </div>
+      <div className="np-row np-row--between">
+        <span className="np-body">清晰度（码区域 / 整帧）</span>
+        <span className="np-body np-num">
+          {report.codeSharpness === null ? '—' : report.codeSharpness.toFixed(0)} /{' '}
+          {report.sharpness.toFixed(0)}
+        </span>
+      </div>
+      <div className="np-label" style={{ marginTop: 10 }}>
+        版本
+      </div>
+      <div className="np-body np-body--tight np-num">{__NP_BUILD__}</div>
     </div>
   );
 }

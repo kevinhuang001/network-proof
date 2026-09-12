@@ -18,10 +18,15 @@
 export interface FinderEstimate {
   /** Finder patterns found. A complete code has three; one is enough to measure. */
   count: number;
-  /** Median module size in camera pixels. */
+  /** Module size in camera pixels, the smaller of the two axes. */
   modulePx: number;
-  /** Centre of the first pattern found, in source pixels. */
+  /** Centre of the best pattern found, in source pixels. */
   at: { x: number; y: number };
+  /**
+   * The code's own extent, padded: where to look when measuring how sharp it is, and where to
+   * point the user when telling them what the camera can see.
+   */
+  region: { left: number; top: number; right: number; bottom: number };
 }
 
 /** 1:1:3:1:1 across seven modules. */
@@ -198,7 +203,11 @@ export function estimateFinder(
     else groups.push([candidate]);
   }
 
-  const estimates: { modulePx: number; at: { x: number; y: number } }[] = [];
+  const estimates: {
+    modulePx: number;
+    at: { x: number; y: number };
+    region: { left: number; top: number; right: number; bottom: number };
+  }[] = [];
   for (const group of groups) {
     if (group.length < 2) continue; // one row is a coincidence
     const first = group[0]!;
@@ -209,16 +218,39 @@ export function estimateFinder(
      * inflated module size is the dangerous direction: it turns "too far away" into "close
      * enough, look elsewhere for the problem".
      */
+    /*
+     * The extent of the patterns found, padded by a few modules. A finder pattern sits inside the
+     * code, so the real code is a little larger than the box around the patterns — the pad covers
+     * the pattern's own width and the quiet zone, which is all a sharpness reading needs.
+     */
+    const modulePx = Math.min(first.total, vertical) / RATIO_TOTAL;
+    const pad = modulePx * 8;
+    let left = Infinity;
+    let top = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+    for (const entry of group) {
+      left = Math.min(left, entry.x);
+      right = Math.max(right, entry.x);
+      top = Math.min(top, entry.y);
+      bottom = Math.max(bottom, entry.y);
+    }
     estimates.push({
-      modulePx: Math.min(first.total, vertical) / RATIO_TOTAL,
+      modulePx,
       at: { x: first.x, y: first.y },
+      region: {
+        left: Math.max(0, Math.round(left - pad)),
+        top: Math.max(0, Math.round(top - pad)),
+        right: Math.min(width, Math.round(right + pad)),
+        bottom: Math.min(height, Math.round(bottom + pad)),
+      },
     });
   }
 
   if (estimates.length === 0) return null;
   estimates.sort((a, b) => a.modulePx - b.modulePx);
   const best = estimates[0]!;
-  return { count: estimates.length, modulePx: best.modulePx, at: best.at };
+  return { count: estimates.length, modulePx: best.modulePx, at: best.at, region: best.region };
 }
 
 /**

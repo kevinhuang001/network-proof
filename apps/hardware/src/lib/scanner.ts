@@ -2,7 +2,7 @@ import jsQR from 'jsqr';
 import { FrameCollector } from '@netproof/core';
 import type { FrameCollectorProgress, FrameType } from '@netproof/core';
 import { attachStream, cameraInfo, requestCameraStream } from './camera';
-import { SHARP_ENOUGH, classifyQuality, frameQuality, grayscale, sharpness } from './frameQuality';
+import { classifyQuality, frameQuality, grayscale, sharpness } from './frameQuality';
 import type { FrameQuality } from './frameQuality';
 import { estimateFinder, sizeAdvice } from './finderPattern';
 import type { FinderEstimate } from './finderPattern';
@@ -106,9 +106,17 @@ export interface ScanStatus {
    * read it, which is a different conversation from "move closer" — and telling someone to move
    * closer when the problem is focus sends them the wrong way.
    */
-  advice?: 'FOCUS' | null;
-  /** Average neighbour-to-neighbour jump: how well the lens is focused. */
+  advice?: 'FOCUS' | 'NOT_FOUND' | null;
+  /** Average neighbour-to-neighbour jump over the whole frame. Diluted by everything else in it. */
   sharpness?: number;
+  /**
+   * The same measurement over the code itself, which is the one that means something.
+   *
+   * Calibrated against a simulated 1080×1920 frame: a sharp code measures 28-43 over its own
+   * region and 1-6 over the whole frame, because the whole frame is mostly not code. A number
+   * without that distinction is a number nobody can act on.
+   */
+  codeSharpness?: number | null;
   /**
    * A picture of the exact crop that was handed to the decoder.
    *
@@ -148,6 +156,8 @@ export interface ScanReport {
   estimate: FinderEstimate | null;
   /** Average neighbour-to-neighbour jump, for the diagnostics screen. */
   sharpness: number;
+  /** The same, restricted to the located code, or null when no code was located. */
+  codeSharpness: number | null;
 }
 
 let lastReport: ScanReport | null = null;
@@ -225,13 +235,15 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
   let lastFinderAt = 0;
   let lastAdvice: string | null = null;
   let lastSharpness = 0;
+  let lastCodeSharpness: number | null = null;
+  let lastEstimate: FinderEstimate | null = null;
   let lastSampleAt = 0;
 
   /** Report a problem once, and never talk over the transfer once it is running. */
   const report = (
     phase: ScanStatus['phase'],
     estimate?: FinderEstimate | null,
-    advice: 'FOCUS' | null = null,
+    advice: 'FOCUS' | 'NOT_FOUND' | null = null,
     sample: string | null = null,
   ): void => {
     lastReport = {
@@ -243,6 +255,7 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
       rejected: rejectedFrames,
       estimate: estimate ?? null,
       sharpness: lastSharpness,
+      codeSharpness: lastCodeSharpness,
     };
     if (lastVerdict === phase && estimate === undefined) return;
     lastVerdict = phase;
@@ -251,6 +264,7 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
       info: cameraInfo(stream),
       advice,
       sharpness: lastSharpness,
+      codeSharpness: lastCodeSharpness,
       sample,
       ...(estimate === undefined ? {} : { estimate }),
     });
@@ -306,19 +320,29 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
       let sample: string | null = null;
       if (!decodedAny && elapsed > SAMPLE_AFTER_MS && now - lastSampleAt > 1000 && previewContext) {
         lastSampleAt = now;
-        preview.width = SAMPLE_SIDE;
-        preview.height = SAMPLE_SIDE;
+        /*
+         * The code when we have found it, the whole frame when we have not. The first shows
+         * whether the modules are clean; the second shows whether the code is in the picture at
+         * all, which is the question when nothing has been located.
+         */
+        const region = lastEstimate?.region;
+        const cropW = region ? region.right - region.left : sampleWidth;
+        const cropH = region ? region.bottom - region.top : sampleHeight;
+        const box = Math.max(cropW, cropH, 1);
+        const side = SAMPLE_SIDE;
+        preview.width = region ? Math.round((cropW / box) * side) : side;
+        preview.height = region ? Math.round((cropH / box) * side) : side;
         previewContext.imageSmoothingEnabled = true;
         previewContext.drawImage(
           canvas,
+          region ? region.left : 0,
+          region ? region.top : 0,
+          cropW,
+          cropH,
           0,
           0,
-          sampleWidth,
-          sampleHeight,
-          0,
-          0,
-          SAMPLE_SIDE,
-          SAMPLE_SIDE,
+          preview.width,
+          preview.height,
         );
         try {
           sample = preview.toDataURL('image/jpeg', 0.6);
@@ -341,11 +365,23 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
         const estimate = estimateFinder(gray, sampleWidth, sampleHeight);
         lastSharpness = sharpness(gray, sampleWidth, sampleHeight);
         /*
+         * Sharpness where it means something. Over a whole 1080×1920 frame a *sharp* code measures
+         * 1-6, because the frame is mostly not code; over the code itself it measures 28-43.
+         * Reporting the first number as "sharpness" was reporting the weather in another city.
+         */
+        lastCodeSharpness =
+          estimate === null ? null : sharpness(gray, sampleWidth, sampleHeight, estimate.region);
+        /*
          * Focus before distance. A picture too soft to hold a code is one that no advice about
          * distance can help, and "the size is fine" would send the user looking in the wrong place
          * — which is exactly what happened.
          */
-        const advice = lastSharpness < SHARP_ENOUGH && robust ? 'FOCUS' : sizeAdvice(estimate);
+        const advice = adviceFor({
+          estimate,
+          codeSharpness: lastCodeSharpness,
+          robust,
+        });
+        lastEstimate = estimate;
         if (advice !== lastAdvice || sample !== null) {
           lastAdvice = advice;
           report(
@@ -457,6 +493,38 @@ export async function decodeImageFile(file: File, scanSize = 640): Promise<strin
   const result = jsQR(image.data, image.width, image.height, { inversionAttempts: 'attemptBoth' });
   return result?.data ?? null;
 }
+
+/**
+ * The advice, decided from measurements in the order that can be trusted.
+ *
+ * Separated from the loop and pure, because this sentence is the only feedback the user gets and
+ * it has already been wrong twice: it told people to move closer when the problem was focus, and
+ * it said nothing at all when the camera could not find a code to measure.
+ */
+export function adviceFor(input: {
+  estimate: FinderEstimate | null;
+  codeSharpness: number | null;
+  robust: boolean;
+}): string | null {
+  if (!input.robust) return null;
+  if (input.estimate === null) {
+    // Nothing code-shaped in the frame. Not a distance problem: there is nothing to be close to.
+    return 'NOT_FOUND';
+  }
+  if (input.codeSharpness !== null && input.codeSharpness < CODE_SHARP_ENOUGH) {
+    return 'FOCUS';
+  }
+  return sizeAdvice(input.estimate);
+}
+
+/**
+ * Below this, the code's own region is too soft for the modules to survive.
+ *
+ * Calibrated against a simulated 1080×1920 frame: a cleanly rendered code measures 28-43 over its
+ * own region, and blur takes it under 20. The whole-frame number this replaced measured 1-6 for
+ * the *same* sharp code, so no threshold on it could have meant anything.
+ */
+export const CODE_SHARP_ENOUGH = 20;
 
 /**
  * What to say under the viewfinder.

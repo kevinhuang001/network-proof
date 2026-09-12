@@ -128,7 +128,7 @@ fi
 # --- 6. Build ---
 log "building the web bundle and syncing Capacitor"
 cd "$REPO_ROOT"
-pnpm --filter @netproof/hardware build >/dev/null
+NP_BUILD_COMMIT=$(git rev-parse --short HEAD) NP_BUILD_TIME=$(date -u +%Y-%m-%dT%H:%MZ) pnpm --filter @netproof/hardware build >/dev/null
 pnpm --filter @netproof/hardware exec cap sync android >/dev/null
 
 cd "$REPO_ROOT/apps/hardware/android"

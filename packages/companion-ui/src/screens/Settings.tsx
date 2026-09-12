@@ -1,3 +1,5 @@
+declare const __NP_BUILD__: string;
+
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { CHAINS, chainLabel, priceSourceLabels } from '@netproof/companion';
@@ -25,6 +27,11 @@ function shortRpc(url: string | undefined): string {
   } catch {
     return url.length > 34 ? `${url.slice(0, 34)}…` : url;
   }
+}
+
+/** Injected by the host's build; absent in tests, where "dev" is the honest answer. */
+function buildStamp(): string {
+  return typeof __NP_BUILD__ === 'string' ? __NP_BUILD__ : 'dev';
 }
 
 export function SettingsScreen(): ReactNode {
@@ -151,6 +158,11 @@ export function SettingsScreen(): ReactNode {
 
       <div className="np-card">
         <div className="np-label">本机数据</div>
+        {/*
+          Which build this is. Same reason as on the device: 「还是不行」 cannot be answered
+          without knowing whether the page in front of you is the one that was just fixed.
+        */}
+        <KeyValue label="版本" value={buildStamp()} />
         <KeyValue label="已记录活动" value={`${activity.length} 条`} />
         <KeyValue label="已授权站点" value={`${approvedOrigins.length} 个`} />
         <Button variant="secondary" size="small" onClick={() => { clearActivities(); show('活动记录已清空'); }}>

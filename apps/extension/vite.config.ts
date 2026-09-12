@@ -13,7 +13,24 @@ import { resolve } from 'node:path';
  * Each build runs with `emptyOutDir: false` after the first, so `dist/` ends up
  * with all four entry points and public/ copied verbatim.
  */
+/**
+ * A stamp of what was built, shown in settings.
+ *
+ * Added because a whole round of debugging was spent on a question nobody could answer from the
+ * outside: 「现在还是识别不了」 does not say whether the phone is running the build that fixed the
+ * previous problem. The commit and the time are baked in at build time, so the settings screen
+ * answers it in one glance.
+ */
+function buildStamp(): string {
+  const commit = process.env.NP_BUILD_COMMIT ?? 'unknown';
+  const at = process.env.NP_BUILD_TIME ?? new Date().toISOString();
+  return `${commit} · ${at}`;
+}
+
 export default defineConfig({
+  define: {
+    __NP_BUILD__: JSON.stringify(buildStamp()),
+  },
   plugins: [react()],
   build: {
     outDir: 'dist',

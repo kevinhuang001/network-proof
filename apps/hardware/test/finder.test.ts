@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import QRCode from 'qrcode';
 import { autoFramesForMessage, buildSignRequestMessage } from '@netproof/core';
 import { READABLE_MODULE_PX, estimateFinder, matchesFinderRatio, otsuThreshold, sizeAdvice } from '../src/lib/finderPattern';
+import { CODE_SHARP_ENOUGH, adviceFor } from '../src/lib/scanner';
 
 /**
  * Measuring the code instead of guessing about it.
@@ -125,5 +126,43 @@ describe('what the user is told', () => {
     // The threshold is the measured one: five pixels per module always reads, two never does,
     // and this is the line between "get closer" and "the problem is elsewhere".
     expect(READABLE_MODULE_PX).toBe(4);
+  });
+});
+
+describe('what the advice is allowed to claim', () => {
+  /*
+   * Three sentences, and each one has been wrong in production at least once.
+   *
+   * 「拿近一点」 was said to a user whose problem was focus. 「码的大小够了」 was said when the
+   * camera had found nothing at all to measure. The order below is the order the measurements can
+   * be trusted: nothing found beats focus beats distance.
+   */
+  const estimate = (modulePx: number) => ({
+    count: 3,
+    modulePx,
+    at: { x: 10, y: 10 },
+    region: { left: 0, top: 0, right: 40, bottom: 40 },
+  });
+
+  it('says nothing at all while the fast path is still trying', () => {
+    // Advice before the scanner has escalated would be advice based on one attempt.
+    expect(adviceFor({ estimate: null, codeSharpness: null, robust: false })).toBeNull();
+  });
+
+  it('does not talk about distance when there is no code to be close to', () => {
+    expect(adviceFor({ estimate: null, codeSharpness: null, robust: true })).toBe('NOT_FOUND');
+  });
+
+  it('blames focus before distance', () => {
+    // A code the right size that is soft: the earlier version told this user to move closer,
+    // which for a fixed-focus lens is exactly the wrong direction.
+    expect(adviceFor({ estimate: estimate(5), codeSharpness: CODE_SHARP_ENOUGH - 5, robust: true })).toBe('FOCUS');
+    // Big enough and sharp: nothing left to blame but the distance, and it is too far.
+    expect(adviceFor({ estimate: estimate(2), codeSharpness: CODE_SHARP_ENOUGH + 10, robust: true })).toContain('拿近');
+  });
+
+  it('uses the calibrated threshold, not a round number', () => {
+    // Measured on a simulated 1080×1920 frame: a clean code measures 28-43 over its own region.
+    expect(CODE_SHARP_ENOUGH).toBe(20);
   });
 });

@@ -97,11 +97,27 @@ export function grayscale(data: Uint8ClampedArray | Uint8Array, pixels: number):
  *
  * Every other pixel in each direction: enough to characterise focus, cheap enough per frame.
  */
-export function sharpness(gray: Uint8Array | Uint8ClampedArray, width: number, height: number): number {
+export interface SharpRegion {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export function sharpness(
+  gray: Uint8Array | Uint8ClampedArray,
+  width: number,
+  height: number,
+  region?: SharpRegion,
+): number {
+  const left = Math.max(0, Math.floor(region?.left ?? 0));
+  const top = Math.max(0, Math.floor(region?.top ?? 0));
+  const right = Math.min(width, Math.ceil(region?.right ?? width));
+  const bottom = Math.min(height, Math.ceil(region?.bottom ?? height));
   let sum = 0;
   let count = 0;
-  for (let y = 0; y + 2 < height; y += 2) {
-    for (let x = 0; x + 2 < width; x += 2) {
+  for (let y = top; y + 2 < bottom; y += 2) {
+    for (let x = left; x + 2 < right; x += 2) {
       const here = gray[y * width + x]!;
       sum += Math.abs(here - gray[y * width + x + 2]!) + Math.abs(here - gray[(y + 2) * width + x]!);
       count += 2;

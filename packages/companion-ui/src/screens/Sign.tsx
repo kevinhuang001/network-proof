@@ -753,7 +753,13 @@ export function SignScreen({ id }: { id: string }): ReactNode {
                   // A single code is photographed once by hand, so it carries more redundancy
                   // than the app default; the animation keeps the default, where every module
                   // costs scanning time.
-                  {...(display.animated ? {} : { errorCorrectionLevel: 'Q' as const })}
+                  /*
+                   * Level H for the static code: it is photographed once, by hand, through a lens
+                   * this project has learned not to trust — and 30% recoverable damage is the
+                   * difference between a code that survives a bad camera and one that does not.
+                   * It costs 8 extra modules, which the static code can afford.
+                   */
+                  {...(display.animated ? {} : { errorCorrectionLevel: 'H' as const })}
                   caption={
                     display.animated
                       ? '用离线手机扫描这个二维码（动画）'
