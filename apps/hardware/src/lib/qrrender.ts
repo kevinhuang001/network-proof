@@ -1,5 +1,5 @@
 import QRCode from 'qrcode';
-import { qr as qrTokens } from '@netproof/ui';
+import { qr as qrTokens, qrLayout } from '@netproof/ui';
 
 /**
  * Animated QR rendering.
@@ -35,10 +35,18 @@ export function paintMatrix(
   moduleCount: number,
 ): void {
   const quiet = qrTokens.quietZoneModules;
-  const totalModules = moduleCount + quiet * 2;
-  const cssWidth = canvas.clientWidth || canvas.parentElement?.clientWidth || 320;
-  const modulePx = Math.max(1, Math.floor(cssWidth / totalModules));
-  const pixels = modulePx * totalModules;
+  /*
+   * The container's width, not the canvas's own: `canvas.clientWidth` is what this function
+   * sets, so reading it back made every repaint depend on the previous one — and a code that
+   * shrinks on each repaint is a code that eventually cannot be scanned.
+   */
+  const holder = canvas.parentElement;
+  const style = holder ? window.getComputedStyle(holder) : null;
+  const padding = style
+    ? (Number.parseFloat(style.paddingLeft || '0') || 0) + (Number.parseFloat(style.paddingRight || '0') || 0)
+    : 0;
+  const available = holder ? Math.max(80, holder.clientWidth - padding) : 320;
+  const { modulePx, pixels } = qrLayout(available, moduleCount, { quietZoneModules: quiet });
   const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
 
   canvas.width = Math.round(pixels * dpr);

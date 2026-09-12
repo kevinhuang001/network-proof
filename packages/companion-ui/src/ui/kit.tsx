@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
-import { qr as qrTokens } from '@netproof/ui';
+import { qr as qrTokens, qrLayout } from '@netproof/ui';
 import { TextField } from '@netproof/ui/text-field';
 import { ChevronLeftIcon } from './icons';
 
@@ -210,14 +210,27 @@ export function QrDisplay({
     });
     const moduleCount = prepared.reduce((max, matrix) => Math.max(max, matrix.size), 0);
 
+    /*
+     * The width comes from the container, not from the canvas.
+     *
+     * `canvas.clientWidth` is what this function *sets*, so using it as the input made every
+     * repaint read its own output; switching between a 61-module animated code and a 105-module
+     * static one shrank the code a notch each time. The wrapper is a block box whose width comes
+     * from the stage, so it does not move when the canvas does.
+     */
+    const availableWidth = (): number => {
+      const holder = canvas.parentElement;
+      if (!holder) return 320;
+      const style = window.getComputedStyle(holder);
+      const padding = Number.parseFloat(style.paddingLeft || '0') + Number.parseFloat(style.paddingRight || '0');
+      return Math.max(80, holder.clientWidth - (Number.isFinite(padding) ? padding : 0));
+    };
+
     const paint = (position: number): void => {
       const matrix = prepared[position % prepared.length];
       if (!matrix) return;
       const quiet = qrTokens.quietZoneModules;
-      const total = moduleCount + quiet * 2;
-      const cssWidth = canvas.clientWidth || 340;
-      const modulePx = Math.max(1, Math.floor(cssWidth / total));
-      const pixels = modulePx * total;
+      const { modulePx, pixels } = qrLayout(availableWidth(), moduleCount, { quietZoneModules: quiet });
       const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
       canvas.width = Math.round(pixels * dpr);
       canvas.height = Math.round(pixels * dpr);

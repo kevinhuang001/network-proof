@@ -86,6 +86,33 @@ export function grayscale(data: Uint8ClampedArray | Uint8Array, pixels: number):
   return out;
 }
 
+/**
+ * How sharp the picture is, as the average jump between neighbouring pixels.
+ *
+ * This is the measurement that was missing. A code can be the right size, brightly lit, in the
+ * middle of the frame — and unreadable, because the lens never focused on it. Blur leaves a
+ * finder pattern as a vague grey block, the binarizer finds no edges, and every other number the
+ * app had says "fine". A sharp photograph of a QR code measures roughly 30-60 here; a smeared one
+ * sits under 15, and around 5 the picture is a watercolour.
+ *
+ * Every other pixel in each direction: enough to characterise focus, cheap enough per frame.
+ */
+export function sharpness(gray: Uint8Array | Uint8ClampedArray, width: number, height: number): number {
+  let sum = 0;
+  let count = 0;
+  for (let y = 0; y + 2 < height; y += 2) {
+    for (let x = 0; x + 2 < width; x += 2) {
+      const here = gray[y * width + x]!;
+      sum += Math.abs(here - gray[y * width + x + 2]!) + Math.abs(here - gray[(y + 2) * width + x]!);
+      count += 2;
+    }
+  }
+  return count === 0 ? 0 : sum / count;
+}
+
+/** Below this the picture is too soft for a code to survive, whatever its module size. */
+export const SHARP_ENOUGH = 14;
+
 export type FrameVerdict = 'ok' | 'blank' | 'dark' | 'frozen';
 
 /** Below this mean brightness there is nothing to threshold. */

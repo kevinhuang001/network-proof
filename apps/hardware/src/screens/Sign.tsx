@@ -136,6 +136,27 @@ export function ScanRequestScreen({
           />
         )}
 
+        {/*
+          The input to the decoder, shown to the person who can see the scene.
+
+          Not a decoration and not a debug view for its own sake: 「我看的二维码很清楚了，但还是
+          识别不出来」 is a sentence only this picture can settle, because what the eye sees across
+          the room and what the camera delivers are different pictures — one is sharp, bright and
+          framed, the other is whatever the lens, the exposure and the crop left of it.
+        */}
+        {status?.sample ? (
+          <div className="np-card">
+            <div className="np-label">摄像头实际拍到的画面</div>
+            <img src={status.sample} alt="摄像头取样" className="np-sample" />
+            <div className="np-body np-body--tight np-ink-3" style={{ marginTop: 8 }}>
+              {`这就是喂给识别的那张图${status.sharpness === undefined ? '' : `（清晰度 ${status.sharpness.toFixed(0)}）`}。`}
+              {status.sharpness !== undefined && status.sharpness < 14
+                ? '数字偏低，说明对焦没对准：擦一下镜头，或换个距离。'
+                : '如果这张图和屏幕上看到的不一样，问题就在摄像头或取景位置上。'}
+            </div>
+          </div>
+        ) : null}
+
         {error ? <Alert tone="danger">{error}</Alert> : null}
         {progress && progress.rejectedFrames > 3 ? (
           <Alert tone="warn" title="扫到了别的二维码">

@@ -94,6 +94,29 @@ export const qr = {
   errorCorrectionLevel: 'M' as const,
 } as const;
 
+/**
+ * How big to paint a QR code in the space available.
+ *
+ * One function, used by both renderers, because both had the same bug: they measured
+ * `canvas.clientWidth` — which is a *result* of painting — as the input for the next paint. So
+ * each repaint read the width it had just set, and anything that shrank the canvas shrank it
+ * again on the next frame. Toggling between a dense code and a sparse one walked the code down
+ * in size a step at a time, which is precisely what a user reported: 「点击换成动画越来越小了」.
+ *
+ * The width given here must come from the container, never from the canvas.
+ */
+export function qrLayout(
+  availableWidth: number,
+  moduleCount: number,
+  options: { quietZoneModules?: number } = {},
+): { modulePx: number; pixels: number; totalModules: number } {
+  const quiet = options.quietZoneModules ?? qr.quietZoneModules;
+  const totalModules = moduleCount + quiet * 2;
+  const width = availableWidth > 0 ? availableWidth : 320;
+  const modulePx = Math.max(1, Math.floor(width / totalModules));
+  return { modulePx, pixels: modulePx * totalModules, totalModules };
+}
+
 export function shortAddress(address: string, lead = 6, tail = 4): string {
   if (address.length <= lead + tail + 1) return address;
   return `${address.slice(0, lead)}…${address.slice(-tail)}`;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyQuality, frameQuality } from '../src/lib/frameQuality';
+import { SHARP_ENOUGH, classifyQuality, frameQuality, sharpness } from '../src/lib/frameQuality';
 
 /**
  * The pixel-level checks that turn 「一直没反应」 into one of three named problems.
@@ -81,5 +81,50 @@ describe('classifying what we have seen', () => {
     // A live camera always differs a little, even pointed at a static scene.
     const live = Array.from({ length: 12 }, (_, index) => frameQuality(textured(index)));
     expect(classifyQuality(live)).toBe('ok');
+  });
+});
+
+describe('how sharp the picture is', () => {
+  /** A checkerboard of `modulePx`-wide squares: a code-like picture at a known softness. */
+  function checker(modulePx: number, size = 240): Uint8Array {
+    const gray = new Uint8Array(size * size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        gray[y * size + x] = Math.floor(x / modulePx) % 2 === Math.floor(y / modulePx) % 2 ? 0 : 255;
+      }
+    }
+    return gray;
+  }
+
+  /** A box blur, standing in for a lens that is not focused. */
+  function soften(gray: Uint8Array, size: number, radius: number): Uint8Array {
+    const out = new Uint8Array(size * size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        let sum = 0;
+        let count = 0;
+        for (let dy = -radius; dy <= radius; dy++) {
+          for (let dx = -radius; dx <= radius; dx++) {
+            const sy = Math.min(size - 1, Math.max(0, y + dy));
+            const sx = Math.min(size - 1, Math.max(0, x + dx));
+            sum += gray[sy * size + sx]!;
+            count += 1;
+          }
+        }
+        out[y * size + x] = sum / count;
+      }
+    }
+    return out;
+  }
+
+  it('separates a sharp picture from a smeared one', () => {
+    const size = 240;
+    const sharp = sharpness(checker(8, size), size, size);
+    const smeared = sharpness(soften(checker(8, size), size, 5), size, size);
+    expect(sharp).toBeGreaterThan(SHARP_ENOUGH * 2);
+    expect(smeared).toBeLessThan(SHARP_ENOUGH);
+    // A flat picture has nothing to focus on and must not read as "sharp".
+    expect(sharpness(new Uint8Array(size * size).fill(128), size, size)).toBe(0);
+    expect(sharpness(new Uint8Array(0), 0, 0)).toBe(0);
   });
 });

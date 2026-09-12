@@ -971,6 +971,16 @@ body {
  * device now measures the code and says 「拿近一点」 when it needs to.
  */
 
+/* The picture the scanner is actually working from. */
+.np-sample {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 8px;
+  border-radius: var(--np-radius-md);
+  background: #000;
+}
+
 .np-qr-caption {
   text-align: center;
   font-size: 13px;

@@ -2,7 +2,7 @@ import jsQR from 'jsqr';
 import { FrameCollector } from '@netproof/core';
 import type { FrameCollectorProgress, FrameType } from '@netproof/core';
 import { attachStream, cameraInfo, requestCameraStream } from './camera';
-import { classifyQuality, frameQuality, grayscale } from './frameQuality';
+import { SHARP_ENOUGH, classifyQuality, frameQuality, grayscale, sharpness } from './frameQuality';
 import type { FrameQuality } from './frameQuality';
 import { estimateFinder, sizeAdvice } from './finderPattern';
 import type { FinderEstimate } from './finderPattern';
@@ -32,6 +32,14 @@ const ROBUST_DECODE_AFTER_MS = 1500;
  * exception, no picture, and — before this — nothing on screen to say so.
  */
 const NO_SIGNAL_AFTER_MS = 3000;
+
+/**
+ * How long a scan may fail before the app starts showing the user what it is looking at.
+ *
+ * Long enough that a normal scan never sees it, short enough to arrive while the person is still
+ * holding the phone and wondering.
+ */
+const SAMPLE_AFTER_MS = 5000;
 
 /**
  * The square the user is told to fill, as a fraction of the sampled square.
@@ -69,6 +77,25 @@ export interface ScanStatus {
   /** What the camera gave us, once there is a stream. */
   info: CameraInfo | null;
   /**
+   * The advice the scanner settled on, when it is one the hint line should repeat verbatim.
+   *
+   * 'FOCUS' is the case that matters: the code is the right size and the picture is too soft to
+   * read it, which is a different conversation from "move closer" — and telling someone to move
+   * closer when the problem is focus sends them the wrong way.
+   */
+  advice?: 'FOCUS' | null;
+  /** Average neighbour-to-neighbour jump: how well the lens is focused. */
+  sharpness?: number;
+  /**
+   * A picture of the exact crop that was handed to the decoder.
+   *
+   * The input to the failing component, shown to the person who can see the scene. Every other
+   * diagnostic this app has describes that image; this is the image, and it is what settles
+   * 「我看的二维码很清楚了，但还是识别不出来」 — what the eye sees across the room and what the
+   * camera delivers are not the same picture.
+   */
+  sample?: string | null;
+  /**
    * How big the code in front of the camera is, when a finder pattern can be found at all.
    *
    * This is what turns 「还没扫到」 into advice: whether to move closer is decided by pixels per
@@ -96,6 +123,8 @@ export interface ScanReport {
   rejected: number;
   /** Measured size of the code in view, when one could be measured. */
   estimate: FinderEstimate | null;
+  /** Average neighbour-to-neighbour jump, for the diagnostics screen. */
+  sharpness: number;
 }
 
 let lastReport: ScanReport | null = null;
@@ -150,6 +179,9 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('无法创建 2D 画布上下文');
+  /** A small copy of the crop, for the picture the diagnostics screen shows. */
+  const preview = document.createElement('canvas');
+  const previewContext = preview.getContext('2d');
   /** Only used to enlarge a crop that turned out to be too small to resolve. */
   const enlarged = document.createElement('canvas');
   const enlargedContext = enlarged.getContext('2d', { willReadFrequently: true });
@@ -169,9 +201,16 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
   let rejectedFrames = 0;
   let lastFinderAt = 0;
   let lastAdvice: string | null = null;
+  let lastSharpness = 0;
+  let lastSampleAt = 0;
 
   /** Report a problem once, and never talk over the transfer once it is running. */
-  const report = (phase: ScanStatus['phase'], estimate?: FinderEstimate | null): void => {
+  const report = (
+    phase: ScanStatus['phase'],
+    estimate?: FinderEstimate | null,
+    advice: 'FOCUS' | null = null,
+    sample: string | null = null,
+  ): void => {
     lastReport = {
       at: Date.now(),
       phase,
@@ -180,12 +219,16 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
       decoded: decodedFrames,
       rejected: rejectedFrames,
       estimate: estimate ?? null,
+      sharpness: lastSharpness,
     };
     if (lastVerdict === phase && estimate === undefined) return;
     lastVerdict = phase;
     onStatus?.({
       phase,
       info: cameraInfo(stream),
+      advice,
+      sharpness: lastSharpness,
+      sample,
       ...(estimate === undefined ? {} : { estimate }),
     });
   };
@@ -272,11 +315,44 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
        */
       if (!decodedAny && now - lastFinderAt > 400) {
         lastFinderAt = now;
-        const estimate = estimateFinder(grayscale(image.data, crop * crop), crop, crop);
-        const advice = sizeAdvice(estimate);
-        if (advice !== lastAdvice) {
+        const gray = grayscale(image.data, crop * crop);
+        const estimate = estimateFinder(gray, crop, crop);
+        lastSharpness = sharpness(gray, crop, crop);
+        /*
+         * Focus first. A picture too soft to hold a code is one that no advice about distance can
+         * help, and "the size is fine" would send the user looking in the wrong place — which is
+         * exactly what happened.
+         */
+        const advice =
+          lastSharpness < SHARP_ENOUGH && elapsed > ROBUST_DECODE_AFTER_MS ? 'FOCUS' : sizeAdvice(estimate);
+        /*
+         * A picture of the input, every second or so, once the scan has been failing long enough
+         * for someone to be wondering why. Small (240px) and JPEG, because this is drawn on the
+         * same phone that is trying to decode.
+         */
+        let sample: string | null = null;
+        if (elapsed > SAMPLE_AFTER_MS && now - lastSampleAt > 1000 && previewContext) {
+          lastSampleAt = now;
+          const side240 = 240;
+          preview.width = side240;
+          preview.height = side240;
+          previewContext.imageSmoothingEnabled = true;
+          previewContext.drawImage(canvas, 0, 0, image.width, image.height, 0, 0, side240, side240);
+          try {
+            sample = preview.toDataURL('image/jpeg', 0.6);
+          } catch {
+            sample = null;
+          }
+        }
+
+        if (advice !== lastAdvice || sample !== null) {
           lastAdvice = advice;
-          report(elapsed > ROBUST_DECODE_AFTER_MS ? 'searching' : 'live', estimate);
+          report(
+            elapsed > ROBUST_DECODE_AFTER_MS ? 'searching' : 'live',
+            estimate,
+            advice === 'FOCUS' ? 'FOCUS' : null,
+            sample,
+          );
         }
       }
 
@@ -419,8 +495,13 @@ export function scanHint(input: {
     case 'live':
       return sizeAdvice(input.status?.estimate ?? null) ?? '把二维码放进取景框';
     case 'searching':
-      // Measured when possible: whether to move closer is a fact about pixels per module, and
-      // the person holding the phone has no way to see it.
+      /*
+       * Measured, not guessed, and in the order the measurements deserve: a picture too soft to
+       * hold a code comes first, because "the size is fine" is then true and useless.
+       */
+      if (input.status?.advice === 'FOCUS') {
+        return '画面太糊，对不上焦：擦一下镜头，再试试 20–40 厘米的距离（有些老手机离太近对不上焦）';
+      }
       return (
         sizeAdvice(input.status?.estimate ?? null) ??
         '还没扫到：把两个屏幕靠近些、调高插件端亮度、拿稳'
