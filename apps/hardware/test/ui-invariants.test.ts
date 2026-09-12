@@ -321,4 +321,16 @@ describe('UI invariants', () => {
       expect(source, `${config} must target the WebView floor`).toContain("'chrome67'");
     }
   });
+  it('routes every way out of a screen through the router, not around it', () => {
+    // The Android back button is handled by the router, which owns the screen stack. A screen
+    // that navigates by any other means — a raw history call, a fragment link — would move the
+    // screen without telling the stack, and the system back gesture would then go somewhere
+    // else entirely. Both were true at some point in this app's life.
+    const app = readFileSync(join(repoRoot, 'apps/hardware/src/App.tsx'), 'utf8');
+    expect(app).toContain("App.addListener('backButton'");
+    expect(app).toContain("window.addEventListener('popstate'");
+    // Every up-navigation is the same `back()` the on-screen arrow calls.
+    expect(app).not.toMatch(/onBack=\{\(\) => go\(/u);
+    expect(app).not.toMatch(/onCancel=\{\(\) => go\(/u);
+  });
 });

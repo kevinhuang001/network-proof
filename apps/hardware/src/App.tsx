@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EntropyResult, SignRequestMessage, SignResponseMessage } from '@netproof/core';
 import { SessionProvider, useSession } from './state/session';
 import { CaptureScreen } from './screens/Capture';
@@ -69,14 +69,90 @@ export function App(): ReactNode {
   );
 }
 
+/**
+ * The screen stack, and the system back button.
+ *
+ * The router is state, not history, which is deliberate — an offline device has no business
+ * with a URL — but that left the Android back button with nothing to do: the WebView had no
+ * history to walk, so pressing it either did nothing or dropped the user out of the app. A
+ * wallet you cannot back out of a screen is a wallet whose back gesture teaches the wrong
+ * thing.
+ *
+ * Three transitions, and the difference between them is the whole design:
+ *
+ *   - `go` — forward, and remember where from.
+ *   - `back` — the same move the on-screen back arrow makes, so the gesture and the button
+ *     cannot disagree.
+ *   - `finish` — a flow that is over. Going back into a completed wallet creation, or into a
+ *     signature that has already been delivered, would be going back into nothing.
+ */
 function Router(): ReactNode {
   const session = useSession();
-  const [route, setRoute] = useState<Route>({ name: 'welcome' });
+  const [stack, setStack] = useState<Route[]>([{ name: 'welcome' }]);
   const [error, setError] = useState<string | null>(null);
+  const route = stack[stack.length - 1] ?? { name: 'welcome' };
+  // Read by the back listener, which fires outside React's render cycle.
+  const depthRef = useRef(stack.length);
+  depthRef.current = stack.length;
 
   const go = useCallback((next: Route) => {
     setError(null);
-    setRoute(next);
+    setStack((previous) => [...previous, next]);
+    // `pushState` gives the WebView — and a browser — something to go back to.
+    try {
+      window.history.pushState({ screen: next.name }, '');
+    } catch {
+      // A WebView that refuses history still has the in-app stack.
+    }
+  }, []);
+
+  /** Up one screen. Used by every on-screen back arrow and by the system gesture. */
+  const back = useCallback(() => {
+    setError(null);
+    setStack((previous) => (previous.length > 1 ? previous.slice(0, -1) : previous));
+  }, []);
+
+  /** A finished flow: whatever comes next is a beginning, not a return. */
+  const finish = useCallback((next: Route) => {
+    setError(null);
+    setStack([next]);
+    try {
+      window.history.replaceState({ screen: next.name }, '');
+    } catch {
+      // Same as above: cosmetic.
+    }
+  }, []);
+
+  useEffect(() => {
+    const onPop = (): void => {
+      setError(null);
+      // A pop we did not ask for is the user going back. If there is nothing left to pop, the
+      // history entry was ours and the screen stays put.
+      setStack((previous) => (previous.length > 1 ? previous.slice(0, -1) : previous));
+    };
+    window.addEventListener('popstate', onPop);
+
+    /*
+     * Capacitor's back event. `canGoBack` is the WebView's opinion of history; the stack is
+     * ours. Leaving the app is right only when there is nowhere left to go.
+     */
+    let listener: { remove: () => void } | undefined;
+    void (async () => {
+      try {
+        const { App } = await import('@capacitor/app');
+        listener = await App.addListener('backButton', ({ canGoBack }) => {
+          if (depthRef.current > 1 || canGoBack) window.history.back();
+          else void App.exitApp();
+        });
+      } catch {
+        // Not in a Capacitor shell; the browser back button is the same event.
+      }
+    })();
+
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      listener?.remove();
+    };
   }, []);
 
   const createFromEntropy = (entropy: EntropyResult): void => {
@@ -99,7 +175,7 @@ function Router(): ReactNode {
       return (
         <CaptureScreen
           requiredBits={256}
-          onCancel={() => go({ name: 'welcome' })}
+          onCancel={back}
           onComplete={createFromEntropy}
         />
       );
@@ -108,7 +184,7 @@ function Router(): ReactNode {
       return (
         <BackupScreen
           entropy={route.entropy}
-          onBack={() => go({ name: 'welcome' })}
+          onBack={back}
           onNext={() => go({ name: 'passphrase', entropy: route.entropy })}
         />
       );
@@ -116,7 +192,7 @@ function Router(): ReactNode {
     case 'passphrase':
       return (
         <PassphraseScreen
-          onBack={() => go({ name: 'backup', entropy: route.entropy })}
+          onBack={back}
           onNext={(passphrase) => go({ name: 'password', entropy: route.entropy, passphrase })}
         />
       );
@@ -125,7 +201,7 @@ function Router(): ReactNode {
       return (
         <VaultPasswordScreen
           passphraseEnabled={route.passphrase.length > 0}
-          onBack={() => go({ name: 'passphrase', entropy: route.entropy })}
+          onBack={back}
           onNext={(password, label) => {
             try {
               session.createWallet({
@@ -134,7 +210,7 @@ function Router(): ReactNode {
                 password,
                 label,
               });
-              go({ name: 'device' });
+              finish({ name: 'device' });
             } catch (caught) {
               setError((caught as Error).message);
             }
@@ -145,22 +221,22 @@ function Router(): ReactNode {
     case 'import':
       return (
         <ImportWalletScreen
-          onBack={() => go({ name: 'welcome' })}
-          onDone={() => go({ name: 'device' })}
+          onBack={back}
+          onDone={() => finish({ name: 'device' })}
         />
       );
 
     case 'unlock':
       return (
         <UnlockScreen
-          onBack={() => go({ name: 'welcome' })}
-          onUnlocked={() => go({ name: 'device' })}
+          onBack={back}
+          onUnlocked={() => finish({ name: 'device' })}
         />
       );
 
     case 'device':
       if (!session.unlocked) {
-        return <LockedNotice onUnlock={() => go({ name: 'unlock' })} onHome={() => go({ name: 'welcome' })} />;
+        return <LockedNotice onUnlock={() => finish({ name: 'unlock' })} onHome={back} />;
       }
       return (
         <DeviceHomeScreen
@@ -169,25 +245,25 @@ function Router(): ReactNode {
           onSettings={() => go({ name: 'diagnostics' })}
           onLock={() => {
             session.lock();
-            go({ name: 'welcome' });
+            finish({ name: 'welcome' });
           }}
         />
       );
 
     case 'wallet':
       if (!session.unlocked) {
-        return <LockedNotice onUnlock={() => go({ name: 'unlock' })} onHome={() => go({ name: 'welcome' })} />;
+        return <LockedNotice onUnlock={() => finish({ name: 'unlock' })} onHome={back} />;
       }
       return (
         <WalletHomeScreen
           walletId={route.id}
-          onBack={() => go({ name: 'device' })}
+          onBack={back}
           onLogin={() => go({ name: 'login-qr' })}
           onSign={() => go({ name: 'scan' })}
           onSettings={() => go({ name: 'diagnostics' })}
           onLock={() => {
             session.lock();
-            go({ name: 'welcome' });
+            finish({ name: 'welcome' });
           }}
         />
       );
@@ -195,7 +271,7 @@ function Router(): ReactNode {
     case 'wallets':
       return (
         <WalletsScreen
-          onBack={() => go({ name: 'device' })}
+          onBack={back}
           onCreate={() => go({ name: 'add-capture' })}
           onImport={() => go({ name: 'add-import' })}
         />
@@ -208,7 +284,7 @@ function Router(): ReactNode {
       return (
         <CaptureScreen
           requiredBits={256}
-          onCancel={() => go({ name: 'wallets' })}
+          onCancel={back}
           onComplete={(entropy) => go({ name: 'add-backup', entropy })}
         />
       );
@@ -217,7 +293,7 @@ function Router(): ReactNode {
       return (
         <BackupScreen
           entropy={route.entropy}
-          onBack={() => go({ name: 'wallets' })}
+          onBack={back}
           onNext={() => go({ name: 'add-passphrase', entropy: route.entropy })}
         />
       );
@@ -225,7 +301,7 @@ function Router(): ReactNode {
     case 'add-passphrase':
       return (
         <PassphraseScreen
-          onBack={() => go({ name: 'add-backup', entropy: route.entropy })}
+          onBack={back}
           onNext={(passphrase) => go({ name: 'add-name', entropy: route.entropy, passphrase })}
         />
       );
@@ -237,7 +313,7 @@ function Router(): ReactNode {
           subtitle="第 4 / 4 步"
           actionLabel="保存"
           defaultName={`钱包 ${session.wallets.length + 1}`}
-          onBack={() => go({ name: 'add-passphrase', entropy: route.entropy })}
+          onBack={back}
           onConfirm={(label) => {
             try {
               session.addWallet({
@@ -254,7 +330,7 @@ function Router(): ReactNode {
                   transcriptDigest: route.entropy.transcriptDigest,
                 },
               });
-              go({ name: 'device' });
+              finish({ name: 'device' });
             } catch (caught) {
               setError((caught as Error).message);
             }
@@ -265,22 +341,22 @@ function Router(): ReactNode {
     case 'add-import':
       return (
         <ImportWalletScreen
-          onBack={() => go({ name: 'wallets' })}
-          onDone={() => go({ name: 'device' })}
+          onBack={back}
+          onDone={() => finish({ name: 'device' })}
           addToExisting
         />
       );
 
     case 'login-qr':
       if (!session.unlocked) {
-        return <LockedNotice onUnlock={() => go({ name: 'unlock' })} onHome={() => go({ name: 'welcome' })} />;
+        return <LockedNotice onUnlock={() => finish({ name: 'unlock' })} onHome={back} />;
       }
-      return <LoginQrScreen onBack={() => go({ name: 'device' })} />;
+      return <LoginQrScreen onBack={back} />;
 
     case 'scan':
       return (
         <ScanRequestScreen
-          onBack={() => go({ name: 'device' })}
+          onBack={back}
           onDecoded={(request) => go({ name: 'review', request })}
         />
       );
@@ -289,19 +365,19 @@ function Router(): ReactNode {
       return (
         <ReviewScreen
           request={route.request}
-          onBack={() => go({ name: 'device' })}
+          onBack={back}
           onSigned={(response) => go({ name: 'signature', response })}
         />
       );
 
     case 'signature':
-      return <SignatureScreen response={route.response} onDone={() => go({ name: 'device' })} />;
+      return <SignatureScreen response={route.response} onDone={() => finish({ name: 'device' })} />;
 
     case 'diagnostics':
       return (
         <DiagnosticsScreen
-          onBack={() => go(session.unlocked ? { name: 'device' } : { name: 'welcome' })}
-          onWipe={() => go({ name: 'welcome' })}
+          onBack={back}
+          onWipe={() => finish({ name: 'welcome' })}
         />
       );
 
@@ -311,7 +387,7 @@ function Router(): ReactNode {
           <Header title="出错了" />
           <div className="np-main">
             <Alert tone="danger">{error ?? '未知状态'}</Alert>
-            <Button block onClick={() => go({ name: 'welcome' })}>
+            <Button block onClick={() => finish({ name: 'welcome' })}>
               回到首页
             </Button>
           </div>
