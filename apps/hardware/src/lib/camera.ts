@@ -100,23 +100,72 @@ export async function attachStream(
   }
 }
 
-/** Request the rear camera. Throws a readable error the UI can show verbatim. */
-export async function requestCameraStream(): Promise<MediaStream> {
-  if (!cameraSupported()) {
-    throw new Error('此设备/浏览器不支持摄像头接口 (getUserMedia)。请使用 Android 版或在 https 环境下打开。');
-  }
+/**
+ * What the camera actually gave us, as opposed to what we asked for.
+ *
+ * Android WebViews answer `getUserMedia` with a mode of their own choosing and say nothing
+ * about it. A 640×480 stream shown in a full-width square is a 2× magnification of a small
+ * image, which is what "the camera is open but everything is blurry" looks like — and a QR
+ * code that lands on a few pixels per module is a code that never decodes. Measuring it is
+ * the only way to tell a soft preview from a camera that is doing its best.
+ */
+export interface CameraInfo {
+  width: number;
+  height: number;
+  frameRate: number | null;
+  label: string;
+  facingMode: string | null;
+}
+
+/** Below this width the preview is visibly soft and a code has to fill the frame. */
+export const SHARP_WIDTH = 960;
+
+const TARGET_WIDTH = 1920;
+const TARGET_HEIGHT = 1080;
+
+export function cameraInfo(stream: MediaStream): CameraInfo {
+  const track = stream.getVideoTracks()[0];
+  const settings = (track?.getSettings?.() ?? {}) as MediaTrackSettings & { frameRate?: number };
+  return {
+    width: settings.width ?? 0,
+    height: settings.height ?? 0,
+    frameRate: typeof settings.frameRate === 'number' ? settings.frameRate : null,
+    label: track?.label ?? '',
+    facingMode: typeof settings.facingMode === 'string' ? settings.facingMode : null,
+  };
+}
+
+/**
+ * The camera to open when the default one is not good enough.
+ *
+ * Pure, so the label heuristics can be tested: after permission is granted, a camera's
+ * `label` says which way it faces (`camera2 0, facing back` on Android), and the front one is
+ * never the one to scan a code with.
+ */
+export function pickRearCameraId(devices: Pick<MediaDeviceInfo, 'kind' | 'deviceId' | 'label'>[]): string | null {
+  const cameras = devices.filter((device) => device.kind === 'videoinput');
+  if (cameras.length === 0) return null;
+  const notFront = cameras.filter((device) => !/front|user|前置/i.test(device.label));
+  const named = notFront.find((device) => /back|rear|environment|后置|背面/i.test(device.label));
+  return (named ?? notFront[0] ?? cameras[0])?.deviceId ?? null;
+}
+
+function videoConstraints(extra: MediaTrackConstraints = {}): MediaTrackConstraints {
+  return {
+    facingMode: { ideal: 'environment' },
+    width: { ideal: TARGET_WIDTH },
+    height: { ideal: TARGET_HEIGHT },
+    // More frames per second means more independent noise samples, and a QR animation that
+    // is easier to catch mid-frame.
+    frameRate: { ideal: 30 },
+    ...extra,
+  };
+}
+
+/** One `getUserMedia`, with the failures a user can act on turned into sentences. */
+async function openCamera(constraints: MediaTrackConstraints): Promise<MediaStream> {
   try {
-    return await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        // Ask for the highest frame rate we can get: more frames means more
-        // independent noise samples per second.
-        frameRate: { ideal: 30 },
-      },
-      audio: false,
-    });
+    return await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
   } catch (error) {
     const name = (error as { name?: string }).name ?? '';
     if (name === 'NotAllowedError') {
@@ -127,6 +176,67 @@ export async function requestCameraStream(): Promise<MediaStream> {
     }
     throw new Error(`无法打开摄像头：${(error as Error).message}`);
   }
+}
+
+function stopStream(stream: MediaStream): void {
+  for (const track of stream.getTracks()) track.stop();
+}
+
+/**
+ * Request the rear camera, and try again if the answer is a low-resolution one.
+ *
+ * The three steps are ordered by cost, and every one of them is allowed to fail:
+ *
+ *   1. ask for 1920×1080 and a rear camera;
+ *   2. if the stream came back small, ask the *same track* to grow (`applyConstraints`), which
+ *      on many devices switches the camera to a sharper capture mode without a new prompt;
+ *   3. if it is still small, enumerate the cameras, name the rear one, and open it directly.
+ *
+ * Whatever comes out of that is returned as-is, and the caller is expected to report the real
+ * numbers to the user: a phone that can only give 640×480 is a phone whose owner should hold
+ * the code closer, not a phone that silently scans worse.
+ */
+export async function requestCameraStream(): Promise<MediaStream> {
+  if (!cameraSupported()) {
+    throw new Error('此设备/浏览器不支持摄像头接口 (getUserMedia)。请使用 Android 版或在 https 环境下打开。');
+  }
+
+  let stream = await openCamera(videoConstraints());
+  if (cameraInfo(stream).width >= SHARP_WIDTH) return stream;
+
+  const track = stream.getVideoTracks()[0];
+  if (track) {
+    try {
+      await track.applyConstraints({
+        width: { ideal: TARGET_WIDTH },
+        height: { ideal: TARGET_HEIGHT },
+      });
+      if (cameraInfo(stream).width >= SHARP_WIDTH) return stream;
+    } catch {
+      // Not supported on this WebView; the next step is the one that matters.
+    }
+  }
+
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const deviceId = pickRearCameraId(devices);
+    if (deviceId !== null) {
+      const better = await openCamera(videoConstraints({ deviceId: { exact: deviceId } }));
+      if (cameraInfo(better).width > cameraInfo(stream).width) {
+        stopStream(stream);
+        stream = better;
+      } else {
+        // The named camera is not better than what we already have — usually because it is
+        // the same one. Do not leave a second stream open on a device that is meant to be
+        // doing one thing at a time.
+        stopStream(better);
+      }
+    }
+  } catch {
+    // Keep what we have.
+  }
+
+  return stream;
 }
 
 export async function startEntropyCapture(options: CaptureOptions): Promise<CaptureHandle> {

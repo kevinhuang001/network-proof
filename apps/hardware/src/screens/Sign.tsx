@@ -33,7 +33,8 @@ import { CameraStage, QrDisplay } from '../components/QrDisplay';
 import { isAbortError } from '../lib/camera';
 import { ROBUST_FALLBACK_MS } from '../lib/qrPresets';
 import { useRobustQrFallback } from '../lib/useRobustQrFallback';
-import { startQrScan } from '../lib/scanner';
+import { scanCameraNote, scanHint, startQrScan } from '../lib/scanner';
+import type { ScanStatus } from '../lib/scanner';
 import type { ScanHandle } from '../lib/scanner';
 import { useSession } from '../state/session';
 
@@ -56,6 +57,8 @@ export function ScanRequestScreen({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const scanRef = useRef<ScanHandle | null>(null);
   const [progress, setProgress] = useState<FrameCollectorProgress | null>(null);
+  /** What the camera is doing, as opposed to what the decode progress implies it is doing. */
+  const [status, setStatus] = useState<ScanStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
 
@@ -73,6 +76,9 @@ export function ScanRequestScreen({
           signal: controller.signal,
           onProgress: (next) => {
             if (!cancelled) setProgress(next);
+          },
+          onStatus: (next) => {
+            if (!cancelled) setStatus(next);
           },
           onComplete: (payload) => {
             if (cancelled) return;
@@ -122,7 +128,8 @@ export function ScanRequestScreen({
         ) : (
           <CameraStage
             videoRef={videoRef}
-            hint={progress?.hint ?? '正在打开摄像头…'}
+            hint={scanHint({ status, progress })}
+            note={scanCameraNote(status?.info ?? null)}
             progressLabel={progress?.total ? `${progress.solved}/${progress.total} 分片` : '等待二维码'}
             progressValue={fraction}
             tone={fraction >= 1 ? 'up' : 'neutral'}
