@@ -30,7 +30,6 @@ export interface DeviceSettings {
    */
   storePassphrase: boolean;
   /** Number of account indices exported. */
-  accountCount: number;
   /** Preferred derivation scheme id. */
   preferredScheme: string;
   /**
@@ -50,7 +49,6 @@ export interface DeviceSettings {
 export const DEFAULT_SETTINGS: DeviceSettings = {
   deviceName: 'NetProof Air',
   storePassphrase: false,
-  accountCount: 3,
   preferredScheme: 'bip44',
   solanaAddressCount: 5,
   qrFrameDurationMs: 420,

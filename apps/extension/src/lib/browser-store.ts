@@ -1,4 +1,3 @@
-import { migrateLegacyKeys } from '@netproof/companion';
 import type { KeyValueStore } from '@netproof/companion-ui';
 
 /**
@@ -16,15 +15,8 @@ export async function createChromeStore(): Promise<KeyValueStore> {
   const area = chrome.storage.local;
   const raw = await area.get(null);
 
-  // One-time move to the names the shared store uses. Without it, the UI would read an empty
-  // area while the service worker kept reading the old one, and a pending request would never
-  // appear on screen.
-  const { values, changed } = migrateLegacyKeys(raw);
-  if (changed) await area.clear().then(() => area.set(values));
-  const migrated = values;
-
   const mirror = new Map<string, string>();
-  for (const [key, value] of Object.entries(migrated)) {
+  for (const [key, value] of Object.entries(raw)) {
     mirror.set(key, typeof value === 'string' ? value : JSON.stringify(value));
   }
 

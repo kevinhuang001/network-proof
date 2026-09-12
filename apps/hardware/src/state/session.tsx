@@ -77,7 +77,6 @@ export interface SessionValue {
     password: string;
     /** Name shown on the device's wallet list. */
     label?: string;
-    accountCount?: number;
   }) => void;
   /**
    * Import an existing wallet from a mnemonic.
@@ -92,7 +91,6 @@ export interface SessionValue {
     passphrase: string;
     password: string;
     label?: string;
-    accountCount?: number;
   }) => void;
   unlock: (password: string, passphrase?: string) => void;
   rekey: (passphrase: string) => void;
@@ -125,14 +123,14 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactNod
   const [entropy, setEntropy] = useState<EntropyResult | null>(null);
 
   const deriveWallet = useCallback(
-    (value: VaultSecret, sessionPassphrase: string, accountCount: number): WalletExport => {
+    (value: VaultSecret, sessionPassphrase: string): WalletExport => {
       const seed = mnemonicToSeed(value.mnemonic, sessionPassphrase);
       const root = HDKey.fromMasterSeed(seed);
-      const exported = buildWalletExport(root, {
-        accounts: accountCount,
+      // One account key, at `m/44'/60'/0'/0`: its children are the accounts, so the companion
+      // never needs the device again to add one.
+      return buildWalletExport(root, {
         passphraseProtected: sessionPassphrase.length > 0,
       });
-      return exported;
     },
     [],
   );
@@ -150,8 +148,8 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactNod
 
   const wallet = useMemo<WalletExport | null>(() => {
     if (!secret) return null;
-    return deriveWallet(secret, passphrase, settings.accountCount);
-  }, [secret, passphrase, settings.accountCount, deriveWallet]);
+    return deriveWallet(secret, passphrase);
+  }, [secret, passphrase, deriveWallet]);
 
   /** Re-encrypt the payload under the in-memory key and persist it. */
   const persistData = useCallback(
@@ -173,7 +171,7 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactNod
    * the vault or what they remember.
    */
   const persist = useCallback(
-    (nextSecret: VaultSecret, password: string, accountCount?: number, label = '主钱包') => {
+    (nextSecret: VaultSecret, password: string, label = '主钱包') => {
       const nextVault = createVault(nextSecret, password, {
         kdf: { ...DEFAULT_KDF_PARAMS, salt: '' },
         label,
@@ -188,7 +186,6 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactNod
         // Mirrors the vault rather than recording a choice: a passphrase, when one
         // exists, is always inside the vault from now on.
         storePassphrase: nextSecret.passphrase !== undefined,
-        ...(accountCount !== undefined ? { accountCount } : {}),
       };
       saveSettings(nextSettings);
       setSettings(nextSettings);
@@ -199,7 +196,7 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactNod
   );
 
   const createWallet = useCallback<SessionValue['createWallet']>(
-    ({ entropy: result, passphrase: userPassphrase, password, label, accountCount }) => {
+    ({ entropy: result, passphrase: userPassphrase, password, label }) => {
       const mnemonic = entropyToMnemonic(result.bytes);
       persist(
         {
@@ -222,7 +219,6 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactNod
           words: mnemonic.split(' ').length,
         },
         password,
-        accountCount,
         label && label.trim().length > 0 ? label.trim() : '主钱包',
       );
       setPassphrase(userPassphrase);
@@ -232,7 +228,7 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactNod
   );
 
   const importWallet = useCallback<SessionValue['importWallet']>(
-    ({ mnemonic, passphrase: userPassphrase, password, label, accountCount }) => {
+    ({ mnemonic, passphrase: userPassphrase, password, label }) => {
       if (!validateMnemonic(mnemonic)) {
         throw new Error('助记词校验失败，请检查单词拼写与顺序');
       }
@@ -256,7 +252,6 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactNod
           words: normalized.split(' ').length,
         },
         password,
-        accountCount,
         label && label.trim().length > 0 ? label.trim() : '导入的钱包',
       );
       setPassphrase(userPassphrase);

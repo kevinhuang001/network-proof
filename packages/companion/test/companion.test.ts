@@ -44,7 +44,7 @@ const VECTOR_ADDRESS = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';
  */
 function makeWallet(): ConnectedWallet {
   const root = HDKey.fromMasterSeed(mnemonicToSeed(MNEMONIC, ''));
-  const exported = buildWalletExport(root, { accounts: 2 });
+  const exported = buildWalletExport(root);
   const message = buildXpubMessage(exported, { name: 'NetProof Air', model: 'test' });
   return walletFromXpubMessage(message, 1_700_000_000_000);
 }
@@ -93,25 +93,27 @@ describe('watch-only account derivation', () => {
 
   it('enumerates every exported account, and cannot invent new ones', () => {
     const wallet = makeWallet();
-    const bip44 = listAccounts(wallet, 'bip44');
-    expect(bip44.map((entry) => entry.account)).toEqual([0, 1]);
-    // Hardened account keys cannot be derived from a public key, so an account the
-    // device did not export is simply unavailable — not silently mis-derived.
-    expect(deriveAccountAddresses(wallet, 'bip44', 7, 5)).toEqual([]);
+    // One exported key, and the account level inside it is always 0 — accounts are its
+    // children, not a second hardened level.
+    expect(listAccounts(wallet, 'bip44').map((entry) => entry.account)).toEqual([0]);
+    // Nothing below the exported key is invented: a hardened path cannot be walked from a
+    // public key, so a scheme that is not exported yields nothing at all.
     expect(deriveAccountAddresses(wallet, 'nonexistent', 0, 5)).toEqual([]);
   });
 
-  it('derives independent address lists per account', () => {
+  it('derives a distinct address for every account index', () => {
     const wallet = makeWallet();
-    const a0 = deriveAccountAddresses(wallet, 'bip44', 0, 3);
-    const a1 = deriveAccountAddresses(wallet, 'bip44', 1, 3);
-    expect(a0).toHaveLength(3);
-    expect(a1).toHaveLength(3);
-    expect(a0[0]!.path).toBe("m/44'/60'/0'/0/0");
-    expect(a1[0]!.path).toBe("m/44'/60'/1'/0/0");
-    // No address may appear in two accounts, or the UI would offer duplicates.
-    const all = new Set([...a0, ...a1].map((entry) => entry.address));
-    expect(all.size).toBe(6);
+    const accounts = allAddresses(wallet, { ...DEFAULT_SETTINGS, addressCount: 6 });
+    expect(accounts.map((entry) => entry.path)).toEqual([
+      "m/44'/60'/0'/0/0",
+      "m/44'/60'/0'/0/1",
+      "m/44'/60'/0'/0/2",
+      "m/44'/60'/0'/0/3",
+      "m/44'/60'/0'/0/4",
+      "m/44'/60'/0'/0/5",
+    ]);
+    // No address may appear twice, or the UI would offer duplicates.
+    expect(new Set(accounts.map((entry) => entry.address)).size).toBe(6);
   });
 
   it('bounds the per-account address count', () => {
@@ -134,27 +136,24 @@ describe('watch-only account derivation', () => {
       "m/44'/60'/0'/0/2",
       "m/44'/60'/0'/0/3",
     ]);
-    // And a wallet whose export happens to contain several hardened account keys still
-    // shows one flat list, because the user's accounts are the addresses, not the keys.
-    const many = walletFromXpubMessage(
-      buildXpubMessage(
-        buildWalletExport(HDKey.fromMasterSeed(mnemonicToSeed(MNEMONIC, '')), { accounts: 3 }),
-        { name: 'NetProof Air', model: 'test' },
-      ),
-    );
-    expect(allAddresses(many, settings)).toHaveLength(4);
+    // The export carries one key, and the list is that key's children.
+    const exported = buildWalletExport(HDKey.fromMasterSeed(mnemonicToSeed(MNEMONIC, '')));
+    expect(exported.accounts).toHaveLength(1);
+    expect(exported.accounts[0]!.xpubPath).toBe("m/44'/60'/0'/0");
   });
 
-  it('honours the selected account', () => {
+  it('honours the selected address', () => {
     const wallet = makeWallet();
     const first = resolveAccounts(wallet, DEFAULT_SETTINGS)[0]!;
     const exported = wallet.accounts.find((entry) => entry.scheme === 'bip44' && entry.account === 0)!;
     expect(first.address).toBe(exported.firstAddress);
     expect(first.path).toBe("m/44'/60'/0'/0/0");
 
-    const account1 = resolveAccounts(wallet, { ...DEFAULT_SETTINGS, accountIndex: 1 })[0]!;
-    expect(account1.path).toBe("m/44'/60'/1'/0/0");
-    expect(account1.address).not.toBe(first.address);
+    // `resolveAccounts` is the account's address list; which of them the user is *on* is
+    // `primaryAccount`, and that is what a dApp is told first.
+    const onSecond = primaryAccount(wallet, { ...DEFAULT_SETTINGS, addressIndex: 1 })!;
+    expect(onSecond.path).toBe("m/44'/60'/0'/0/1");
+    expect(onSecond.address).not.toBe(first.address);
   });
 
   it('stores exactly what the device sent, and nothing secret', () => {
@@ -173,7 +172,7 @@ describe('watch-only account derivation', () => {
 describe('combined EVM + Solana export', () => {
   it('stores both families from one payload and picks per network', () => {
     const root = HDKey.fromMasterSeed(mnemonicToSeed(MNEMONIC, ''));
-    const exported = buildWalletExport(root, { accounts: 1 });
+    const exported = buildWalletExport(root);
     const message = buildXpubMessage(
       {
         ...exported,
@@ -550,7 +549,7 @@ describe('account limits per chain', () => {
 
   it('gives Solana only the addresses the device exported', () => {
     const root = HDKey.fromMasterSeed(mnemonicToSeed(MNEMONIC, ''));
-    const exported = buildWalletExport(root, { accounts: 1 });
+    const exported = buildWalletExport(root);
     const message = buildXpubMessage(
       { ...exported, addresses: solanaAccountPaths(5).map((path) => ({ path, address: `So${path}` })) },
       { name: 'NetProof Air', model: 'test' },

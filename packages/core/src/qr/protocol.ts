@@ -559,13 +559,21 @@ export function deriveAddressFromXpub(
   schemeId: string,
   account: number,
   index: number,
+  /**
+   * Where this key actually sits, when that is known.
+   *
+   * A wallet paired before the export moved from the third level to the fourth still holds a
+   * third-level key. Deriving from it with today's scheme would walk the wrong suffix and
+   * produce a *different address* — silently, and on the one screen whose job is to prove the
+   * addresses are right. The export records its own path, so the path travels with the key.
+   */
+  xpubPath?: string,
 ): ResolvedAccount {
   const scheme = getScheme(schemeId);
   const node = HDKey.fromExtendedKey(xpub);
-  // The xpub already sits at the scheme's account level; derive the remaining
-  // non-hardened suffix only.
+  // The xpub already sits at its own level; derive the remaining non-hardened suffix only.
   const target = fillTemplate(scheme.receiveTemplate, account, index);
-  const accountPath = fillTemplate(scheme.xpubPath, account);
+  const accountPath = xpubPath ?? fillTemplate(scheme.xpubPath, account);
   const relative = target.slice(accountPath.length).replace(/^\//u, '');
   const derived = relative.length === 0 ? node : derivePath(node, `m/${relative}`);
   return {

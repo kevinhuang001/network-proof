@@ -20,7 +20,6 @@ import { DEFAULT_SETTINGS, STORAGE_KEYS, STORAGE_PREFIX, defaultTokens } from '@
 
 const {
   wallets: WALLETS_KEY,
-  legacyWallet: LEGACY_WALLET_KEY,
   settings: SETTINGS_KEY,
   origins: ORIGINS_KEY,
   pending: PENDING_KEY,
@@ -134,26 +133,7 @@ export function loadWalletState(): WalletState {
     };
   }
 
-  // One-time migration from the single-wallet layout. The old record keeps its place as
-  // the active wallet, and the account selection that used to live in settings moves onto
-  // it, so an existing user opens the app exactly where they left it.
-  const legacy = read<ConnectedWallet>(LEGACY_WALLET_KEY);
-  if (!legacy) return EMPTY_STATE;
-  const scoped = loadSettings();
-  const record: WalletRecord = {
-    ...legacy,
-    id: legacy.masterFingerprint,
-    name: legacy.device?.name ?? '硬件钱包',
-    pairedAt: legacy.connectedAt ?? Date.now(),
-    accountIndex: scoped.accountIndex,
-    addressIndex: scoped.addressIndex,
-    visibleAccounts: scoped.visibleAccounts,
-    hiddenAccounts: scoped.hiddenAccounts ?? [],
-  };
-  const migrated: WalletState = { wallets: [record], activeId: record.id };
-  write(WALLETS_KEY, migrated);
-  storage()?.removeItem(LEGACY_WALLET_KEY);
-  return migrated;
+  return EMPTY_STATE;
 }
 
 function saveWalletState(state: WalletState): WalletState {
@@ -231,34 +211,16 @@ export function clearWallets(): void {
   const area = storage();
   if (!area) return;
   area.removeItem(WALLETS_KEY);
-  area.removeItem(LEGACY_WALLET_KEY);
   area.removeItem(ORIGINS_KEY);
   area.removeItem(PENDING_KEY);
 }
 
-/**
- * Endpoints that are known not to work, and what to use instead.
- *
- * `api.mainnet-beta.solana.com` 403s any request with an `Origin` header, so a browser can
- * never talk to it — but a user who paired before that was fixed has it stored, and stored
- * settings win over defaults. Without this, their Solana balance stays broken forever with
- * no hint about why.
- */
-const RETIRED_RPC_URLS: Record<string, string> = {
-  'https://api.mainnet-beta.solana.com': 'https://solana-rpc.publicnode.com',
-};
-
 export function loadSettings(): CompanionSettings {
   const stored = read<Partial<CompanionSettings>>(SETTINGS_KEY);
-  const merged = { ...DEFAULT_SETTINGS.rpcUrls, ...(stored?.rpcUrls ?? {}) };
-  const rpcUrls: Record<number, string> = {};
-  for (const [chainId, url] of Object.entries(merged)) {
-    rpcUrls[Number(chainId)] = RETIRED_RPC_URLS[(url ?? '').trim()] ?? url;
-  }
   return {
     ...DEFAULT_SETTINGS,
     ...(stored ?? {}),
-    rpcUrls,
+    rpcUrls: { ...DEFAULT_SETTINGS.rpcUrls, ...(stored?.rpcUrls ?? {}) },
   };
 }
 

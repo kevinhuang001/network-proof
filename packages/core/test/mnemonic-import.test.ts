@@ -174,7 +174,7 @@ describe('inspectMnemonic', () => {
     const inspection = inspectMnemonic(VECTOR);
     expect(inspection.checksumValid).toBe(true);
     const root = HDKey.fromMasterSeed(mnemonicToSeed(inspection.words.join(' '), ''));
-    const exported = buildWalletExport(root, { accounts: 1 });
+    const exported = buildWalletExport(root, {});
     expect(exported.masterFingerprint).toBe(fingerprintHex(root));
     expect(exported.accounts[0]!.firstAddress).toBe(
       publicKeyToAddress(derivePath(root, "m/44'/60'/0'/0/0").publicKey!),

@@ -44,9 +44,27 @@ export const EVM_SCHEMES: DerivationScheme[] = [
   {
     id: 'bip44',
     label: 'BIP44',
-    xpubPath: "m/44'/60'/{account}'",
+    /*
+     * The exported key sits at the *fourth* level — the account's external chain — so the
+     * addresses it produces are its own children: `xpub/i`, i = 0, 1, 2, 3…
+     *
+     * The third level (`m/44'/60'/0'`) would also work, and is what an earlier version
+     * exported. Two reasons to move down one level:
+     *
+     *  - **It exposes strictly less.** The fourth-level key cannot derive the change chain
+     *    (`/1/i`) or anything else the third level could; it is exactly the subtree the user
+     *    sees and nothing else.
+     *  - **It makes the convention unmistakable.** One key, and "add an account" increments
+     *    the last index — which is what MetaMask, OKX Web3, Trust Wallet and imToken do, and
+     *    therefore what a user's other wallet will agree with.
+     *
+     * `changeTemplate` is null because the change chain is genuinely unreachable from here.
+     * That costs nothing on EVM, where change addresses are not a thing, and it is honest
+     * about what this key can and cannot do.
+     */
+    xpubPath: "m/44'/60'/{account}'/0",
     receiveTemplate: "m/44'/60'/{account}'/0/{index}",
-    changeTemplate: "m/44'/60'/{account}'/1/{index}",
+    changeTemplate: null,
     note: 'MetaMask、OKX Web3、Trust Wallet、imToken 默认路径',
   },
 ];
@@ -226,42 +244,44 @@ export interface WalletExport {
 }
 
 /**
- * Build the full watch-only export: root xpub plus an account-level xpub for every
- * supported scheme and account index. This is what the companion scans to "log in".
+ * Build the watch-only export: the root xpub plus the one account key the companion needs.
+ *
+ * One key, because one is all it takes. The key sits at `m/44'/60'/0'/0`, its children are the
+ * accounts, and the companion walks them without help from the device. Exporting more keys
+ * would be exporting the same addresses several ways — and each extra hardened key is another
+ * thing that could disagree with the others.
+ *
+ * This is what the companion scans to "log in".
  */
 export function buildWalletExport(
   root: HDKey,
-  options: { accounts?: number; schemes?: DerivationScheme[]; passphraseProtected?: boolean } = {},
+  options: { schemes?: DerivationScheme[]; passphraseProtected?: boolean } = {},
 ): WalletExport {
   if (!root.privateKey && !root.publicKey) {
     throw new NetProofError('KEY_MISSING_PRIVATE', 'root node has no key material');
   }
-  const accountCount = options.accounts ?? 1;
-  if (accountCount < 1 || accountCount > 100) {
-    throw new NetProofError('PATH_INVALID', 'account count must be between 1 and 100');
-  }
   const schemes = options.schemes ?? EVM_SCHEMES;
 
-  const accounts: AccountExport[] = [];
-  for (let account = 0; account < accountCount; account++) {
-    for (const scheme of schemes) {
-      const xpubPath = fillTemplate(scheme.xpubPath, account);
-      const node = derivePath(root, xpubPath);
-      const firstAddressPath = fillTemplate(scheme.receiveTemplate, account, 0);
-      const firstAddress = publicKeyToAddress(derivePath(root, firstAddressPath).publicKey!);
-      accounts.push({
-        account,
-        scheme: scheme.id,
-        schemeLabel: scheme.label,
-        xpubPath,
-        xpub: node.publicExtendedKey,
-        firstAddress,
-        firstAddressPath,
-        chainCode: toHex(node.chainCode!),
-        publicKey: toHex(node.publicKey!),
-      });
-    }
-  }
+  const accounts: AccountExport[] = schemes.map((scheme) => {
+    // The account level is always 0: what a user calls an account is the last index of
+    // `receiveTemplate`, derived from this key without the device's involvement.
+    const account = 0;
+    const xpubPath = fillTemplate(scheme.xpubPath, account);
+    const node = derivePath(root, xpubPath);
+    const firstAddressPath = fillTemplate(scheme.receiveTemplate, account, 0);
+    const firstAddress = publicKeyToAddress(derivePath(root, firstAddressPath).publicKey!);
+    return {
+      account,
+      scheme: scheme.id,
+      schemeLabel: scheme.label,
+      xpubPath,
+      xpub: node.publicExtendedKey,
+      firstAddress,
+      firstAddressPath,
+      chainCode: toHex(node.chainCode!),
+      publicKey: toHex(node.publicKey!),
+    };
+  });
 
   return {
     version: 1,

@@ -26,25 +26,20 @@ function storage(): chrome.storage.StorageArea {
 /**
  * Values are JSON strings, because that is what the shared UI writes.
  *
- * The UI keeps a synchronous mirror of this area and talks to it through a
- * `KeyValueStore` interface — `getItem`/`setItem` with strings, like `localStorage`. The
- * service worker and the popup read the same area directly, so they have to speak the same
- * encoding; before this they read the raw value, got a string back, and decided there was no
- * wallet. The old raw-object form is still accepted on read, so an install from before the
- * change is not lost.
+ * The UI keeps a synchronous mirror of this area and talks to it through a `KeyValueStore`
+ * interface — `getItem`/`setItem` with strings, like `localStorage`. The service worker and
+ * the popup read the same area directly, so they speak the same encoding; when they did not,
+ * the worker read a string where it expected a wallet and concluded none was paired.
  */
 async function read<T>(key: string): Promise<T | null> {
   const result = await storage().get(key);
   const raw = result[key];
-  if (raw === undefined || raw === null) return null;
-  if (typeof raw === 'string') {
-    try {
-      return JSON.parse(raw) as T;
-    } catch {
-      return null;
-    }
+  if (typeof raw !== 'string') return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
   }
-  return raw as T;
 }
 
 async function write(key: string, value: unknown): Promise<void> {

@@ -28,7 +28,7 @@ const ORIGIN = 'https://app.example.org';
 
 function pairedWallet() {
   const root = HDKey.fromMasterSeed(mnemonicToSeed(MNEMONIC, ''));
-  const exported = buildWalletExport(root, { accounts: 1 });
+  const exported = buildWalletExport(root);
   return walletFromXpubMessage(buildXpubMessage(exported, { name: 'NetProof Air', model: 'test' }));
 }
 

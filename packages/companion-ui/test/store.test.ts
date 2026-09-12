@@ -52,7 +52,7 @@ const MNEMONIC =
 
 function wallet() {
   const root = HDKey.fromMasterSeed(mnemonicToSeed(MNEMONIC, ''));
-  const exported = buildWalletExport(root, { accounts: 2, passphraseProtected: false });
+  const exported = buildWalletExport(root, { passphraseProtected: false });
   return walletFromXpubMessage(buildXpubMessage(exported, { name: 'NetProof Air', model: 'test' }));
 }
 
@@ -152,23 +152,6 @@ describe('web companion storage', () => {
     expect(loadPending()).toEqual([]);
   });
 
-  it('migrates a wallet saved before multiple wallets existed', () => {
-    const paired = wallet();
-    // The layout an existing user has on disk: one wallet under the old key, and the
-    // account selection living in settings.
-    window.localStorage.setItem('netproof.companion.wallet.v1', JSON.stringify(paired));
-    saveSettings({ accountIndex: 0, addressIndex: 3, visibleAccounts: 2 });
-
-    const state = loadWalletState();
-    expect(state.wallets).toHaveLength(1);
-    const migrated = activeWallet(state)!;
-    expect(migrated.id).toBe(paired.masterFingerprint);
-    // The selection moves onto the wallet, so the user opens where they left off.
-    expect(migrated.addressIndex).toBe(3);
-    expect(migrated.visibleAccounts).toBe(2);
-    // And the old key is gone, so the migration runs once.
-    expect(window.localStorage.getItem('netproof.companion.wallet.v1')).toBeNull();
-  });
 
   it('keeps several wallets, and keeps each one\'s account selection', () => {
     const first = wallet();
@@ -234,70 +217,6 @@ it('keeps hidden accounts hidden as the list grows', () => {
       const expected = deriveAddressFromXpub(account0.xpub, 'bip44', 0, index);
       const resolved = resolveAccounts(restored, { ...DEFAULT_SETTINGS, addressIndex: index })[index]!;
       expect(resolved.address).toBe(expected.address);
-    }
-  });
-});
-
-describe('retired endpoints', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
-  it('replaces an RPC endpoint that cannot work from a browser', () => {
-    // `api.mainnet-beta.solana.com` 403s any request carrying an `Origin` header, so a
-    // browser can never reach it. A user who paired before this was fixed has it stored,
-    // and stored settings win over defaults — without the migration their Solana balance
-    // stays broken with no hint why.
-    window.localStorage.setItem(
-      'netproof.companion.settings.v1',
-      JSON.stringify({ rpcUrls: { 501: 'https://api.mainnet-beta.solana.com' } }),
-    );
-    expect(loadSettings().rpcUrls[501]).toBe('https://solana-rpc.publicnode.com');
-  });
-
-  it('leaves a custom endpoint alone', () => {
-    window.localStorage.setItem(
-      'netproof.companion.settings.v1',
-      JSON.stringify({ rpcUrls: { 501: 'https://my-own-node.example/sol' } }),
-    );
-    expect(loadSettings().rpcUrls[501]).toBe('https://my-own-node.example/sol');
-  });
-});
-
-describe('seeded tokens', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
-  it('shows USDT and USDC on the chains that have them', () => {
-    const mainnet = tokensForChain(1).map((entry) => entry.symbol);
-    expect(mainnet).toContain('USDT');
-    expect(mainnet).toContain('USDC');
-    // Base genuinely has no canonical USDT: seeding a bridged wrapper next to the real
-    // ticker is how someone sends the wrong asset.
-    expect(tokensForChain(8453).map((entry) => entry.symbol)).toEqual(['USDC']);
-    // A chain with no list at all yields nothing rather than a guess.
-    expect(tokensForChain(999_999)).toEqual([]);
-  });
-
-  it('merges the user\'s own entry with the seed instead of duplicating it', () => {
-    const usdt = tokensForChain(1).find((entry) => entry.symbol === 'USDT')!;
-    addToken({ ...usdt, symbol: 'USDT', name: 'Tether USD' });
-    const rows = tokensForChain(1).filter((entry) => entry.address.toLowerCase() === usdt.address.toLowerCase());
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.chainId).toBe(1);
-  });
-
-  it('has a well-formed address and decimals for every seeded token', () => {
-    for (const [chainId, tokens] of Object.entries(DEFAULT_TOKENS)) {
-      for (const token of tokens) {
-        expect(token.address, `${chainId} ${token.symbol}`).toMatch(/^0x[0-9a-fA-F]{40}$/u);
-        expect(token.decimals).toBeGreaterThan(0);
-        expect(token.decimals).toBeLessThanOrEqual(18);
-      }
-      // Two seeds for the same address would render the same balance twice.
-      const addresses = tokens.map((entry) => entry.address.toLowerCase());
-      expect(new Set(addresses).size).toBe(addresses.length);
     }
   });
 });

@@ -88,7 +88,13 @@ export function deriveAccountAddresses(
   const addresses: ResolvedAccount[] = [];
   for (let index = 0; index < bounded; index++) {
     try {
-      const derived = deriveAddressFromXpub(entry.xpub, entry.scheme, entry.account, index);
+      const derived = deriveAddressFromXpub(
+        entry.xpub,
+        entry.scheme,
+        entry.account,
+        index,
+        entry.xpubPath,
+      );
       addresses.push({
         address: derived.address,
         path: derived.path,

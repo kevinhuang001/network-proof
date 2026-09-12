@@ -41,7 +41,7 @@ import { concat, crc32, toHex, u32be, utf8 } from '../src/util/bytes';
 import { TestDrbg } from './helpers/synthetic';
 import { mnemonicToSeed } from '../src/crypto/mnemonic';
 import { HDKey } from '@scure/bip32';
-import * as hdModule from '../src/crypto/hd';
+import { publicKeyToAddress } from '../src/crypto/hd';
 import { buildWalletExport } from '../src/crypto/hd';
 
 /** Protocol-level hex always carries the 0x prefix, matching viem. */
@@ -458,7 +458,7 @@ describe('frame collector', () => {
 });
 
 describe('protocol messages', () => {
-  const wallet = buildWalletExport(root, { accounts: 2, passphraseProtected: true });
+  const wallet = buildWalletExport(root, { passphraseProtected: true });
 
   it('round-trips an xpub export with every derivation scheme', () => {
     const message = buildXpubMessage(wallet, { name: 'NetProof Air', model: 'Pixel 4a (offline)' });
@@ -650,26 +650,22 @@ describe('protocol messages', () => {
   });
 
   it('derives companion-side addresses from an exported xpub without any private key', () => {
-    const message = buildXpubMessage(wallet, { name: 'NetProof Air', model: 'test' });
-    // Independent reference: derive the same addresses straight from the seed.
-    const reference = (path: string): string => {
-      const { publicKeyToAddress: toAddress } = hdModule;
-      return toAddress(hdModule.derivePath(root, path).publicKey!);
-    };
+    const exported = buildWalletExport(root);
+    const message = buildXpubMessage(exported, { name: 'NetProof Air', model: 'test' });
+    const bip44 = message.accounts.find((a) => a.scheme === 'bip44')!;
+    // One key at the fourth level; every account is one of its children.
+    expect(bip44.xpubPath).toBe("m/44'/60'/0'/0");
+    expect(deriveAddressFromXpub(bip44.xpub, 'bip44', 0, 0, bip44.xpubPath).path).toBe(
+      "m/44'/60'/0'/0/0",
+    );
 
-    const bip44 = message.accounts.find((a) => a.scheme === 'bip44' && a.account === 0)!;
-    for (const index of [0, 1, 7, 42]) {
-      const resolved = deriveAddressFromXpub(bip44.xpub, 'bip44', 0, index);
-      expect(resolved.address, `index ${index}`).toBe(reference(`m/44'/60'/0'/0/${index}`));
-      expect(resolved.path).toBe(`m/44'/60'/0'/0/${index}`);
-    }
-
-    // Account 1 must resolve to a different family of addresses.
-    const bip44Account1 = message.accounts.find((a) => a.scheme === 'bip44' && a.account === 1)!;
+    // Independent check: derive the same path from the seed with HDKey itself.
     for (const index of [0, 3]) {
-      const resolved = deriveAddressFromXpub(bip44Account1.xpub, 'bip44', 1, index);
-      expect(resolved.address).toBe(reference(`m/44'/60'/1'/0/${index}`));
+      const resolved = deriveAddressFromXpub(bip44.xpub, 'bip44', 0, index, bip44.xpubPath);
+      const direct = root.derive(`m/44'/60'/0'/0/${index}`).publicKey!;
+      expect(resolved.address).toBe(publicKeyToAddress(direct));
     }
+
     expect(() => deriveAddressFromXpub(bip44.xpub, 'nonexistent', 0, 0)).toThrow(/unknown derivation scheme/);
   });
 });

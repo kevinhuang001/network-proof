@@ -270,8 +270,8 @@ function VerifyStep({
   const derived = useMemo(() => {
     try {
       const root = HDKey.fromMasterSeed(mnemonicToSeed(phrase, passphrase));
-      // One account is all this screen needs: it compares the first address, not a list.
-      const exported = buildWalletExport(root, { accounts: 1 });
+      // The comparison is one address and one fingerprint, so this is the whole export.
+      const exported = buildWalletExport(root);
       const first = exported.accounts.find((entry) => entry.scheme === 'bip44')!;
       return {
         fingerprint: exported.masterFingerprint,

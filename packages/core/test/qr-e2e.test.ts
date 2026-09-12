@@ -76,7 +76,7 @@ describe('QR image round trip', () => {
   });
 
   it('keeps every frame inside the QR alphanumeric capacity', () => {
-    const wallet = buildWalletExport(root, { accounts: 3 });
+    const wallet = buildWalletExport(root, {});
     const frames = framesForMessage('NP-XPUB', buildXpubMessage(wallet, { name: 'NetProof Air', model: 'test' }));
     expect(frames.frames.length).toBeGreaterThan(0);
     for (const frame of frames.frames) {
@@ -90,7 +90,7 @@ describe('QR image round trip', () => {
 
 describe('air-gap flows over real QR images', () => {
   it('transfers a full xpub export (scan-to-login) through the camera', () => {
-    const wallet = buildWalletExport(root, { accounts: 3, passphraseProtected: true });
+    const wallet = buildWalletExport(root, { passphraseProtected: true });
     const message = buildXpubMessage(wallet, { name: 'NetProof Air', model: 'Pixel 4a (air-gapped)' });
     const frames = framesForMessage('NP-XPUB', message);
 
@@ -267,7 +267,7 @@ describe('air-gap flows over real QR images', () => {
     // Simulation of glare/partial occlusion: flip a few percent of the modules.
     // Either jsQR fails outright, or the frame CRC rejects the misread. What must
     // never happen is a frame being accepted with wrong contents.
-    const wallet = buildWalletExport(root, { accounts: 3 });
+    const wallet = buildWalletExport(root, {});
     const frames = framesForMessage('NP-XPUB', buildXpubMessage(wallet, { name: 'x', model: 'y' }), 300);
     const honest = frames.frames[0]!;
     let corruptedScans = 0;

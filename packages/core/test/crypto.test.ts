@@ -12,7 +12,6 @@ import {
   wordCount,
 } from '../src/crypto/mnemonic';
 import {
-  EVM_SCHEMES,
   buildWalletExport,
   checksumAddress,
   derivePath,
@@ -197,46 +196,51 @@ describe('hd (BIP32/BIP44)', () => {
     expect(() => derivePath(accountPub, "m/1'")).toThrow(/hardened/);
   });
 
-  it('exports every requested account as a watch-only xpub', () => {
-    const exported = buildWalletExport(root, { accounts: 2, passphraseProtected: true });
+  it('exports exactly one watch-only account key', () => {
+    const exported = buildWalletExport(root, { passphraseProtected: true });
     expect(exported.version).toBe(1);
     expect(exported.masterFingerprint).toMatch(/^[0-9a-f]{8}$/);
     expect(exported.passphraseProtected).toBe(true);
     expect(exported.rootXpub.startsWith('xpub')).toBe(true);
-    expect(exported.accounts).toHaveLength(2 * EVM_SCHEMES.length);
-    // BIP44 is the only scheme. A second one is how a restored seed shows an address the
-    // user does not recognise, on the screen whose job is to prove they recognise it.
+    // One key, at the fourth level: its children are the accounts, so exporting more keys
+    // would be exporting the same addresses several ways.
+    expect(exported.accounts).toHaveLength(1);
     expect(exported.schemes.map((s) => s.id)).toEqual(['bip44']);
 
     const ethersWallet = HDNodeWallet.fromSeed(hexlify(mnemonicToSeed(VECTOR.mnemonic, VECTOR.passphrase)));
     for (const account of exported.accounts) {
+      expect(account.xpubPath).toBe("m/44'/60'/0'/0");
       expect(account.xpub).toBe(ethersWallet.derivePath(account.xpubPath).neuter().extendedKey);
       expect(account.firstAddress).toBe(ethersWallet.derivePath(account.firstAddressPath).address);
       // The exported public key and chain code must be enough to derive children.
       const restored = HDKey.fromExtendedKey(account.xpub);
       expect(restored.publicKey).toBeTruthy();
+      // And those children are the accounts: `xpub/i`, i = 0, 1, 2 …
+      for (const index of [0, 1, 5]) {
+        const child = restored.deriveChild(index);
+        expect(publicKeyToAddress(child.publicKey!)).toBe(
+          ethersWallet.derivePath(`m/44'/60'/0'/0/${index}`).address,
+        );
+      }
     }
-    // Account 1's xpub derives a different family of addresses than account 0's.
-    const a0 = exported.accounts.find((a) => a.scheme === 'bip44' && a.account === 0)!;
-    const a1 = exported.accounts.find((a) => a.scheme === 'bip44' && a.account === 1)!;
-    expect(HDKey.fromExtendedKey(a0.xpub).deriveChild(0).deriveChild(0).publicKey).not.toEqual(
-      HDKey.fromExtendedKey(a1.xpub).deriveChild(0).deriveChild(0).publicKey,
-    );
   });
 
   it('exposes the templates the companion needs', () => {
-    const exported = buildWalletExport(root, { accounts: 1 });
+    const exported = buildWalletExport(root);
     const bip44 = exported.schemes.find((s) => s.id === 'bip44')!;
     expect(fillTemplate(bip44.receiveTemplate, 2, 5)).toBe("m/44'/60'/2'/0/5");
-    expect(fillTemplate(bip44.changeTemplate!, 0, 1)).toBe("m/44'/60'/0'/1/1");
+    // The exported key sits one level above the addresses it produces, so the only thing the
+    // companion walks is the final index — `m/44'/60'/0'/0` → `/0`, `/1`, `/2`…
+    expect(fillTemplate(bip44.xpubPath, 0)).toBe("m/44'/60'/0'/0");
+    expect(fillTemplate(bip44.receiveTemplate, 0, 0)).toBe("m/44'/60'/0'/0/0");
+    // The change chain is genuinely unreachable from this key on purpose.
+    expect(bip44.changeTemplate).toBeNull();
   });
 
-  it('validates addresses and rejects absurd account counts', () => {
+  it('validates addresses', () => {
     expect(isAddress('0x9858EfFD232B4033E47d90003D41EC34EcaEda94')).toBe(true);
     expect(isAddress('0x9858EfFD232B4033E47d90003D41EC34EcaEda9')).toBe(false);
     expect(() => checksumAddress('0x1234')).toThrow(/not an EVM address/);
-    expect(() => buildWalletExport(root, { accounts: 0 })).toThrow(/between 1 and 100/);
-    expect(() => buildWalletExport(root, { accounts: 101 })).toThrow(/between 1 and 100/);
   });
 
   it('decompresses compressed public keys to the same address', () => {

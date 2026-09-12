@@ -12,3 +12,6 @@ apps/hardware/android/local.properties
 apps/hardware/android/app/src/main/assets/public/
 artifacts/*.apk
 artifacts/*.jks
+
+# An extracted copy of the extension build, for loading into a browser.
+artifacts/netproof-extension-*/
