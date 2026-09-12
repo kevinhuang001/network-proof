@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   HDKey,
   buildWalletExport,
@@ -82,6 +82,33 @@ describe('extension storage', () => {
     expect(resolveAccounts(restored!, DEFAULT_SETTINGS)[0]!.address).toBe(
       paired.accounts[0]!.firstAddress,
     );
+  });
+
+  it('sees a wallet that was paired under the old key names', async () => {
+    /*
+     * The extension used to store one wallet under `netproof.wallet.v1`; the shared UI reads a
+     * list under `netproof.companion.wallets.v1`. Nobody migrated it, so an update looked like
+     * a wallet that had forgotten the device — the user had to show the phone's QR again.
+     *
+     * A fresh module graph, because the migration is memoized once per process and this area
+     * is being set up after other tests have already booted it.
+     */
+    vi.resetModules();
+    await chrome.storage.local.clear();
+    const paired = wallet();
+    await chrome.storage.local.set({ 'netproof.wallet.v1': paired });
+
+    const store = await import('../src/lib/store');
+    const restored = await store.loadWallet();
+    expect(restored?.masterFingerprint).toBe(paired.masterFingerprint);
+
+    // And it is a real migration: the new key holds it, the old key is gone.
+    const after = await chrome.storage.local.get([
+      'netproof.wallet.v1',
+      'netproof.companion.wallets.v1',
+    ]);
+    expect(after['netproof.wallet.v1']).toBeUndefined();
+    expect(typeof after['netproof.companion.wallets.v1']).toBe('string');
   });
 
   it('stores nothing secret', async () => {

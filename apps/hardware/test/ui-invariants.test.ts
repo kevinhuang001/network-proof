@@ -321,6 +321,53 @@ describe('UI invariants', () => {
       expect(source, `${config} must target the WebView floor`).toContain("'chrome67'");
     }
   });
+  it('ships real PNG icons, because Chrome silently ignores everything else', () => {
+    /*
+     * Reported: the extension appeared in the toolbar with Chrome's grey puzzle piece. The
+     * manifest declared `"icons": { "128": "icon.svg" }` — and MV3 does not accept SVG for
+     * extension icons. It is not an error, not a warning, and not a broken image: the icon is
+     * simply absent, which looks exactly like a build that forgot to include one.
+     *
+     * So: every icon the manifest names must be a PNG on disk, and the toolbar needs its own
+     * `action.default_icon`, which is what the puzzle piece was standing in for.
+     */
+    const manifestPath = join(repoRoot, 'apps/extension/public/manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      icons?: Record<string, string>;
+      action?: { default_icon?: Record<string, string> };
+    };
+
+    const declared = {
+      ...(manifest.icons ?? {}),
+      ...(manifest.action?.default_icon ?? {}),
+    };
+    expect(Object.keys(declared).length).toBeGreaterThan(0);
+    for (const [size, file] of Object.entries(declared)) {
+      expect(file.endsWith('.png'), `${file} must be a PNG`).toBe(true);
+      const full = join(repoRoot, 'apps/extension/public', file);
+      const bytes = readFileSync(full);
+      // The eight-byte PNG signature, so a renamed SVG cannot pass.
+      expect([...bytes.subarray(0, 8)], `${file} is not a PNG`).toEqual([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      ]);
+      expect(bytes.length).toBeGreaterThan(100);
+      expect(Number(size), `${size} must be a pixel size`).toBeGreaterThan(0);
+    }
+
+    // 16 and 32 are what the toolbar actually draws; without them Chrome falls back.
+    expect(manifest.action?.default_icon).toMatchObject({ '16': expect.any(String), '32': expect.any(String) });
+  });
+
+  it('gives the browser tabs the same mark', () => {
+    // The same complaint one step over: a tab with no favicon is a tab with a blank page icon.
+    for (const app of ['companion-web', 'hardware']) {
+      const html = readFileSync(join(repoRoot, `apps/${app}/index.html`), 'utf8');
+      expect(html, `${app} must link a favicon`).toContain('rel="icon"');
+      const icon = readFileSync(join(repoRoot, `apps/${app}/public/favicon.svg`), 'utf8');
+      expect(icon).toContain('<svg');
+    }
+  });
+
   it('offers a fee choice wherever a transaction is built', () => {
     /*
      * Two screens turn user intent into a signed transaction: the send form, and the approval

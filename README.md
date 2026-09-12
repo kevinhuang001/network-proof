@@ -61,7 +61,7 @@ APK 未声明 `android.permission.INTERNET`——你可以用
 ```bash
 pnpm install
 
-pnpm test              # 267 个测试
+pnpm test              # 315 个测试
 pnpm typecheck         # 六个包全部类型检查
 pnpm verify            # typecheck + test + 三个 app 构建
 
@@ -126,6 +126,26 @@ WebView 版本停在出厂状态。构建下限因此是 **WebView 67**——再
 pnpm build:extension
 # chrome://extensions → 打开开发者模式 → 加载已解压的扩展程序 → 选择 apps/extension/dist
 ```
+
+### 数据存在哪里，更新会不会丢
+
+插件里**没有私钥、没有助记词**：只有设备导出的 xpub、账户选择、设置、已授权的站点。
+助记词与 passphrase 只存在于离线手机里。
+
+| 谁的什么数据 | 存在哪 | 什么情况下会丢 |
+| --- | --- | --- |
+| 手机的助记词 / passphrase | APK 私有 WebView 的 `localStorage`（`netproof.vault.v1`），Argon2id + XChaCha20-Poly1305 加密 | 覆盖安装 APK 不丢；卸载 App、清除应用数据才丢（等于擦除设备） |
+| 插件的配对与设置 | `chrome.storage.local`（**不是** `sync`，不会同步到 Google 账号） | 点「重新加载」不丢；移除扩展、或扩展 ID 变了才丢 |
+| 网页版伴侣 | 该页面的 `localStorage`（按 origin 隔离） | origin 变了才丢 |
+
+Chrome 给"已解压的扩展程序"算 ID 用的是**目录路径**，所以以前把新版本解压到另一个文件夹 = 新 ID = 空存储，
+表现就是"更新一次就要重新导入账号"。现在 `manifest.json` 里写死了 `"key"`（公钥），
+ID 固定为 `olmaniillconofoamopdjfmkaeaidlmk`，与解压到哪个目录无关——**装好这一次之后，以后覆盖文件、
+点「重新加载」都不会再丢数据**。
+
+同理，存储键名（`packages/companion/src/storage.ts` 里的 `netproof.companion.*`）是跟用户机器上已有数据之间的契约：
+改名等于把数据变成孤儿。`migrateLegacyStorage()` 负责把旧键名下的配对搬到新键名下，
+`packages/companion/test/companion.test.ts` 里有一份键名快照测试，防止以后悄悄改名。
 
 ## 使用流程
 
@@ -307,7 +327,7 @@ BIP39 passphrase（"第 25 个词"）与助记词一起推导出**完全不同�
 ## 测试
 
 ```bash
-pnpm test        # core 177 · companion 29 · companion-web 8 · extension 6 · hardware 11
+pnpm test        # core 196 · companion 55 · companion-ui 27 · extension 18 · hardware 19
 ```
 
 测试的重点不是覆盖率，而是**用独立实现交叉验证**：

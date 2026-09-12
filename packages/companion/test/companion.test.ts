@@ -20,6 +20,12 @@ import {
   walletFromXpubMessage,
 } from '../src/accounts';
 import { DEFAULT_SETTINGS, SOLANA_CHAIN_ID, nativeSymbol } from '../src/settings';
+import {
+  LEGACY_STORAGE_KEYS,
+  STORAGE_KEYS,
+  migrateLegacyStorage,
+  type MigrationArea,
+} from '../src/storage';
 import { feeTiers, tierCost } from '../src/fees';
 import type { ConnectedWallet, PendingRequest } from '../src/types';
 
@@ -774,5 +780,143 @@ describe('fee tiers', () => {
     // 21 000 gas at 30 gwei is 0.00063 ETH — the number the send screen used to hard-code as
     // everyone's reserve, which is why a user with 0.001 ETH could "only" send 0.00037.
     expect(tierCost(market!, 21_000n)).toBe(630_000_000_000_000n);
+  });
+});
+
+describe('an update that renames a storage key', () => {
+  /** An area in memory, with the three operations the migration uses. */
+  function area(entries: Record<string, unknown> = {}): MigrationArea & {
+    entries: Map<string, unknown>;
+  } {
+    const map = new Map<string, unknown>(Object.entries(entries));
+    return {
+      entries: map,
+      getItem: (key) => (map.has(key) ? map.get(key) : null),
+      setItem: (key, value) => void map.set(key, value),
+      removeItem: (key) => void map.delete(key),
+    };
+  }
+
+  /** A wallet record as the pre-rename extension wrote it: an object, not a JSON string. */
+  const legacyWallet = {
+    masterFingerprint: 'deadbeef',
+    passphraseProtected: false,
+    rootXpub: 'xpub6-legacy',
+    coinType: 60,
+    device: { name: 'NetProof Air', model: 'phone' },
+    accounts: [],
+    schemes: [],
+    connectedAt: 1_700_000_000_000,
+  };
+
+  it('names the keys users already have data under, and never renames them silently', () => {
+    // This is a contract with data on other people's machines. A rename has to come with a
+    // migration and an edit here, and this test is what makes that impossible to forget.
+    expect(STORAGE_KEYS).toEqual({
+      wallets: 'netproof.companion.wallets.v1',
+      settings: 'netproof.companion.settings.v1',
+      origins: 'netproof.companion.origins.v1',
+      pending: 'netproof.companion.pending.v1',
+      activity: 'netproof.companion.activity.v1',
+      tokens: 'netproof.companion.tokens.v1',
+      passcode: 'netproof.companion.passcode.v1',
+      locked: 'netproof.companion.locked.v1',
+    });
+    expect(LEGACY_STORAGE_KEYS).toEqual({
+      wallet: 'netproof.wallet.v1',
+      settings: 'netproof.settings.v1',
+      origins: 'netproof.origins.v1',
+      pending: 'netproof.pending.v1',
+    });
+  });
+
+  it('carries a paired wallet into the current key, with an id and a name', () => {
+    const store = area({ [LEGACY_STORAGE_KEYS.wallet]: legacyWallet });
+    expect(migrateLegacyStorage(store)).toBe(true);
+
+    const state = JSON.parse(store.entries.get(STORAGE_KEYS.wallets) as string) as {
+      wallets: Record<string, unknown>[];
+      activeId: string;
+    };
+    expect(state.wallets).toHaveLength(1);
+    expect(state.wallets[0]!.id).toBe('deadbeef');
+    expect(state.wallets[0]!.masterFingerprint).toBe('deadbeef');
+    expect(state.wallets[0]!.name).toBe('NetProof Air');
+    expect(state.wallets[0]!.accountIndex).toBe(0);
+    expect(state.wallets[0]!.hiddenAccounts).toEqual([]);
+    expect(state.activeId).toBe('deadbeef');
+    // The old key is gone: leaving it would re-migrate on the next boot, and a stale second
+    // copy of a wallet is a second copy that can disagree.
+    expect(store.entries.has(LEGACY_STORAGE_KEYS.wallet)).toBe(false);
+  });
+
+  it('is safe to run twice, which it is: a popup and a worker both boot', () => {
+    const store = area({ [LEGACY_STORAGE_KEYS.wallet]: legacyWallet });
+    migrateLegacyStorage(store);
+    // The second run finds the legacy keys already removed.
+    expect(migrateLegacyStorage(store)).toBe(false);
+    const state = JSON.parse(store.entries.get(STORAGE_KEYS.wallets) as string) as {
+      wallets: unknown[];
+    };
+    expect(state.wallets).toHaveLength(1);
+  });
+
+  it('adds the old wallet to a list that already exists instead of replacing it', () => {
+    const store = area({
+      [LEGACY_STORAGE_KEYS.wallet]: legacyWallet,
+      [STORAGE_KEYS.wallets]: JSON.stringify({
+        wallets: [{ ...legacyWallet, id: 'cafebabe', masterFingerprint: 'cafebabe', name: '另一个' }],
+        activeId: 'cafebabe',
+      }),
+    });
+    migrateLegacyStorage(store);
+    const state = JSON.parse(store.entries.get(STORAGE_KEYS.wallets) as string) as {
+      wallets: { id: string }[];
+      activeId: string;
+    };
+    expect(state.wallets.map((entry) => entry.id)).toEqual(['cafebabe', 'deadbeef']);
+    // The wallet the user was last in stays the active one.
+    expect(state.activeId).toBe('cafebabe');
+  });
+
+  it('does not let an old settings object overwrite a newer one', () => {
+    const older = area({ [LEGACY_STORAGE_KEYS.settings]: { chainId: 56 } });
+    migrateLegacyStorage(older);
+    expect(JSON.parse(older.entries.get(STORAGE_KEYS.settings) as string)).toEqual({ chainId: 56 });
+
+    const newer = area({
+      [LEGACY_STORAGE_KEYS.settings]: { chainId: 56 },
+      [STORAGE_KEYS.settings]: JSON.stringify({ chainId: 8453 }),
+    });
+    migrateLegacyStorage(newer);
+    expect(JSON.parse(newer.entries.get(STORAGE_KEYS.settings) as string)).toEqual({ chainId: 8453 });
+  });
+
+  it('unions approved origins, so an update does not un-approve a site', () => {
+    const store = area({
+      [LEGACY_STORAGE_KEYS.origins]: ['https://a.example', 'https://b.example'],
+      [STORAGE_KEYS.origins]: JSON.stringify(['https://b.example', 'https://c.example']),
+    });
+    migrateLegacyStorage(store);
+    // Order is the current list's followed by what the old list adds; only the set matters.
+    const origins = JSON.parse(store.entries.get(STORAGE_KEYS.origins) as string) as string[];
+    expect([...origins].sort()).toEqual([
+      'https://a.example',
+      'https://b.example',
+      'https://c.example',
+    ]);
+  });
+
+  it('reads a legacy value that was written as a JSON string too', () => {
+    // Which encoding is on disk depends on which build the user last loaded.
+    const store = area({ [LEGACY_STORAGE_KEYS.wallet]: JSON.stringify(legacyWallet) });
+    expect(migrateLegacyStorage(store)).toBe(true);
+    expect(store.entries.has(STORAGE_KEYS.wallets)).toBe(true);
+  });
+
+  it('leaves an untouched area alone', () => {
+    const store = area({ [STORAGE_KEYS.wallets]: JSON.stringify({ wallets: [], activeId: null }) });
+    expect(migrateLegacyStorage(store)).toBe(false);
+    expect(store.entries.has(STORAGE_KEYS.wallets)).toBe(true);
   });
 });

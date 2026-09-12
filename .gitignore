@@ -15,3 +15,4 @@ artifacts/*.jks
 
 # An extracted copy of the extension build, for loading into a browser.
 artifacts/netproof-extension-*/
+artifacts/*.pem

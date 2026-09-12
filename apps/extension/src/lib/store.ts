@@ -1,5 +1,5 @@
 import type { CompanionSettings, ConnectedWallet, PendingRequest } from '@netproof/companion';
-import { DEFAULT_SETTINGS, STORAGE_KEYS } from '@netproof/companion';
+import { DEFAULT_SETTINGS, LEGACY_STORAGE_KEYS, STORAGE_KEYS, migrateLegacyStorage } from '@netproof/companion';
 
 /**
  * Extension storage.
@@ -21,6 +21,41 @@ const PENDING_KEY = STORAGE_KEYS.pending;
 
 function storage(): chrome.storage.StorageArea {
   return chrome.storage.local;
+}
+
+/**
+ * Carry a wallet paired under the extension's old key names into the current ones.
+ *
+ * The popup migrates too, through the shared UI's adapter, but the service worker is the
+ * process that must not miss it: it is the one a dApp talks to, and a worker that reads an
+ * empty wallet tells the site the user has no account.
+ *
+ * Runs once per worker lifetime, and reads only the four legacy names.
+ */
+let migration: Promise<void> | null = null;
+
+export function ensureStorageMigrated(): Promise<void> {
+  migration ??= (async () => {
+    try {
+      const names: string[] = Object.values(LEGACY_STORAGE_KEYS);
+      const snapshot = await storage().get(names);
+      const pendingWrites: Record<string, string> = {};
+      const pendingRemovals: string[] = [];
+      const applied = migrateLegacyStorage({
+        getItem: (key) => snapshot[key],
+        setItem: (key, value) => {
+          pendingWrites[key] = value;
+        },
+        removeItem: (key) => pendingRemovals.push(key),
+      });
+      if (!applied) return;
+      if (pendingRemovals.length > 0) await storage().remove(pendingRemovals);
+      if (Object.keys(pendingWrites).length > 0) await storage().set(pendingWrites);
+    } catch {
+      // Storage unavailable: every caller below reports that on its own.
+    }
+  })();
+  return migration;
 }
 
 /**
@@ -54,6 +89,7 @@ async function write(key: string, value: unknown): Promise<void> {
  * a dApp asks for accounts, and the answer is "the wallet in front of the user".
  */
 export async function loadWallet(): Promise<ConnectedWallet | null> {
+  await ensureStorageMigrated();
   const state = await read<{ wallets?: ConnectedWallet[]; activeId?: string | null }>(WALLET_KEY);
   if (!state || !Array.isArray(state.wallets)) return null;
   return state.wallets.find((entry) => entry.masterFingerprint === state.activeId) ?? state.wallets[0] ?? null;
@@ -71,6 +107,7 @@ interface WalletScoped {
 }
 
 export async function loadSettings(): Promise<CompanionSettings> {
+  await ensureStorageMigrated();
   const stored = await read<Partial<CompanionSettings>>(SETTINGS_KEY);
   const state = await read<{ wallets?: (WalletScoped & { masterFingerprint: string })[]; activeId?: string | null }>(
     WALLET_KEY,
@@ -103,6 +140,7 @@ export async function saveSettings(patch: Partial<CompanionSettings>): Promise<C
 
 /** Origins the user has approved for dApp connections. */
 export async function loadApprovedOrigins(): Promise<string[]> {
+  await ensureStorageMigrated();
   return (await read<string[]>(ORIGINS_KEY)) ?? [];
 }
 
@@ -127,6 +165,7 @@ export async function revokeOrigin(origin: string): Promise<void> {
  * wallet that randomly refuses to sign.
  */
 export async function loadPending(): Promise<PendingRequest[]> {
+  await ensureStorageMigrated();
   return (await read<PendingRequest[]>(PENDING_KEY)) ?? [];
 }
 

@@ -1,6 +1,12 @@
 import type { ConnectedWallet, CompanionSettings, PendingRequest } from '@netproof/companion';
 import type { PasscodeRecord } from './lock';
-import { DEFAULT_SETTINGS, STORAGE_KEYS, STORAGE_PREFIX, defaultTokens } from '@netproof/companion';
+import {
+  DEFAULT_SETTINGS,
+  STORAGE_KEYS,
+  STORAGE_PREFIX,
+  defaultTokens,
+  migrateLegacyStorage,
+} from '@netproof/companion';
 
 /**
  * Browser storage for the web companion.
@@ -64,8 +70,28 @@ function browserStorage(): KeyValueStore | null {
   }
 }
 
+/**
+ * Whether the old key names have been checked in this page.
+ *
+ * The migration is idempotent, but it reads four keys and this is called on every read of
+ * every screen, so it is done once per page. The extension's worker migrates
+ * independently — whichever of the two boots first does the work, and the second finds
+ * nothing left to do.
+ */
+let legacyChecked = false;
+
 function storage(): KeyValueStore | null {
-  return adapter ?? browserStorage();
+  const area = adapter ?? browserStorage();
+  if (area && !legacyChecked) {
+    legacyChecked = true;
+    try {
+      migrateLegacyStorage(area);
+    } catch {
+      // A store that refuses to be read is a store this app already reports on elsewhere;
+      // a failed migration must not take the wallet screen down with it.
+    }
+  }
+  return area;
 }
 
 function read<T>(key: string): T | null {

@@ -1,4 +1,5 @@
 import type { KeyValueStore } from '@netproof/companion-ui';
+import { ensureStorageMigrated } from './store';
 
 /**
  * `chrome.storage.local` behind the synchronous interface the wallet UI expects.
@@ -13,6 +14,12 @@ import type { KeyValueStore } from '@netproof/companion-ui';
  */
 export async function createChromeStore(): Promise<KeyValueStore> {
   const area = chrome.storage.local;
+  /*
+   * Before the mirror is taken, not after: this snapshot *is* what every screen will read this
+   * session, so a wallet still sitting under the old key names would be invisible until the
+   * next reload — which is how a paired wallet appears to vanish after an update.
+   */
+  await ensureStorageMigrated();
   const raw = await area.get(null);
 
   const mirror = new Map<string, string>();
