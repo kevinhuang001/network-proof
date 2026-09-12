@@ -7,7 +7,7 @@ import {
   describeTransaction,
   describeTypedData,
   fromHex,
-  framesForMessage,
+  autoFramesForMessage,
   hashPersonalMessage,
   hashTypedDataPayload,
   toHex,
@@ -424,7 +424,7 @@ export function SignScreen({ id }: { id: string }): ReactNode {
   const frames = useMemo(
     () =>
       outgoing
-        ? framesForMessage('NP-REQ', outgoing.message, settings.qrFragmentLength).frames
+        ? autoFramesForMessage('NP-REQ', outgoing.message, settings.qrFragmentLength).frames
         : [],
     [outgoing, settings.qrFragmentLength],
   );

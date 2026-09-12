@@ -112,6 +112,69 @@ export function parseFrame(text: string): ParsedFrame {
   return { type, seqNum, fragmentCount, digestPrefix, messageLength, data };
 }
 
+/**
+ * The QR version this wallet aims to display.
+ *
+ * Measured, not guessed. A signing request is 315 bytes of CBOR and an xpub export 476; at the
+ * old flat 300-byte fragment those became **73×73** module codes. A phone camera photographing
+ * another screen has to resolve every one of those modules, and 73 of them across the middle
+ * square of a 480-pixel scan is about four pixels per module — which is where jsQR stops
+ * working, and what 「扫不到二维码」 looks like from the other side of the glass.
+ *
+ * At 57 modules (version 10) the same request needs eight frames instead of seven. One extra
+ * frame, at 420 ms, in exchange for 28% more pixels per module, is not a trade — it is the
+ * difference between a code that scans and a code that does not.
+ */
+export const TARGET_FRAME_CHARS = 280;
+
+/**
+ * How many distinct frames a transfer may contain before density wins over frame count.
+ *
+ * Below this the rule is "as few modules as possible"; above it, waiting for 30 frames becomes
+ * the worse problem, and a denser code is the lesser evil.
+ */
+export const MAX_AUTO_FRAMES = 24;
+
+/** Characters a frame text of this fragment length takes, measured against the real encoder. */
+function frameCharsFor(fragmentLength: number): number {
+  // ceil(bytes × 8 / 5) for base32, plus the `NP1:<TYPE>:<seq>-<count>:` header.
+  return Math.ceil((fragmentLength * 8) / 5) + 31;
+}
+
+/** Frames the builder will produce for this payload, matching `buildFrameSequence`. */
+function framesFor(payloadLength: number, fragmentLength: number): number {
+  const fragmentCount = Math.max(1, Math.ceil(payloadLength / fragmentLength));
+  return Math.ceil(fragmentCount * 1.6) + 3;
+}
+
+/**
+ * The fragment length to use for a payload of this size, never above the user's own preset.
+ *
+ * The preset keeps its meaning — it is the *ceiling*, "how dense am I willing to let a frame
+ * be" — and this lowers it until a frame is small enough to resolve, unless doing so would
+ * stretch the transfer past `MAX_AUTO_FRAMES`, in which case the ceiling wins.
+ */
+export function chooseFragmentLength(
+  payloadLength: number,
+  ceiling = 300,
+  options: { targetFrameChars?: number; maxFrames?: number } = {},
+): number {
+  const target = options.targetFrameChars ?? TARGET_FRAME_CHARS;
+  const maxFrames = options.maxFrames ?? MAX_AUTO_FRAMES;
+  if (payloadLength <= 0) return ceiling;
+
+  // Largest first: the first candidate that is small enough wins.
+  const candidates = [ceiling, 400, 300, 250, 200, 160, 128, 100, 80, 64]
+    .filter((length, index, all) => length <= ceiling && all.indexOf(length) === index)
+    .sort((a, b) => b - a);
+
+  for (const candidate of candidates) {
+    if (framesFor(payloadLength, candidate) > maxFrames) break; // smaller means even more frames
+    if (frameCharsFor(candidate) <= target) return candidate;
+  }
+  return ceiling;
+}
+
 export interface FrameSequenceOptions {
   fragmentLength?: number;
   /** Number of distinct frames to generate before wrapping around. */

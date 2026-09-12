@@ -1,7 +1,9 @@
 import jsQR from 'jsqr';
 import { FrameCollector } from '@netproof/core';
 import type { FrameCollectorProgress, FrameType } from '@netproof/core';
-import { SHARP_WIDTH, attachStream, cameraInfo, requestCameraStream } from './camera';
+import { attachStream, cameraInfo, requestCameraStream } from './camera';
+import { classifyQuality, frameQuality } from './frameQuality';
+import type { FrameQuality } from './frameQuality';
 import type { CameraInfo } from './camera';
 
 /**
@@ -19,7 +21,15 @@ import type { CameraInfo } from './camera';
  * Long enough that a user who is still lining up the code never pays for it, short enough
  * to land while they are still holding the phone steady.
  */
-const ROBUST_DECODE_AFTER_MS = 4000;
+const ROBUST_DECODE_AFTER_MS = 1500;
+
+/**
+ * How long a stream may deliver no frames at all before that is reported as a problem.
+ *
+ * `videoWidth === 0` forever is what a stalled WebView preview looks like: no error, no
+ * exception, no picture, and — before this — nothing on screen to say so.
+ */
+const NO_SIGNAL_AFTER_MS = 3000;
 
 /**
  * The largest crop handed to the decoder in the thorough mode.
@@ -40,12 +50,35 @@ const DETAIL_CROP_MAX = 1080;
  * camera that was open, live and simply not seeing a code went on saying 「正在打开摄像头…」
  * for as long as the user was willing to believe it.
  */
-export type ScanPhase = 'opening' | 'live' | 'searching';
+export type ScanPhase = 'opening' | 'live' | 'searching' | 'no-signal' | 'dark' | 'blank' | 'frozen';
 
 export interface ScanStatus {
   phase: ScanPhase;
   /** What the camera gave us, once there is a stream. */
   info: CameraInfo | null;
+}
+
+/** What the last scan did, kept for the settings screen. */
+export interface ScanReport {
+  at: number;
+  phase: ScanPhase;
+  info: CameraInfo | null;
+  /** Frames sampled since the camera opened. */
+  frames: number;
+  decoded: number;
+}
+
+let lastReport: ScanReport | null = null;
+
+/**
+ * The last scan, for the diagnostics screen.
+ *
+ * Not shown while scanning — a resolution under a viewfinder is a number to read at the wrong
+ * moment — but it is the first thing anyone asked to help needs to know, and asking the user to
+ * describe a blur is not a debugging method.
+ */
+export function lastScanReport(): ScanReport | null {
+  return lastReport;
 }
 
 export interface ScanOptions {
@@ -103,6 +136,18 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
   const openedAt = Date.now();
   let decodedAny = false;
   let toldSearching = false;
+  const quality: FrameQuality[] = [];
+  let lastVerdict: ScanStatus['phase'] | null = null;
+  let frames = 0;
+  let decodedFrames = 0;
+
+  /** Report a problem once, and never talk over the transfer once it is running. */
+  const report = (phase: ScanStatus['phase']): void => {
+    lastReport = { at: Date.now(), phase, info: cameraInfo(stream), frames, decoded: decodedFrames };
+    if (lastVerdict === phase) return;
+    lastVerdict = phase;
+    onStatus?.({ phase, info: cameraInfo(stream) });
+  };
 
   const tick = (now: number): void => {
     if (!running) return;
@@ -130,9 +175,9 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
       const robust = !decodedAny && elapsed > ROBUST_DECODE_AFTER_MS;
       if (robust && !toldSearching) {
         toldSearching = true;
-        // Nothing has decoded after several seconds of live video. That is a fact worth
-        // reporting while the user is still holding the phone, not after they give up.
-        onStatus?.({ phase: 'searching', info: cameraInfo(stream) });
+        // Nothing has decoded after live video started. That is a fact worth reporting while
+        // the user is still holding the phone, not after they give up.
+        report('searching');
       }
       const crop = robust ? Math.min(side, DETAIL_CROP_MAX) : Math.min(scanSize, side);
       if (canvas.width !== crop) {
@@ -141,10 +186,26 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
       }
       context.drawImage(video, sx, sy, side, side, 0, 0, crop, crop);
       const image = context.getImageData(0, 0, crop, crop);
+
+      /*
+       * How the frame looks, before asking whether it contains a code.
+       *
+       * A covered lens, a frozen preview and a code that is merely dense produce the same
+       * silence from jsQR, and the user can only act on the first two if we name them.
+       */
+      frames += 1;
+      if (!decodedAny) {
+        quality.push(frameQuality(image.data));
+        if (quality.length > 24) quality.shift();
+        const verdict = classifyQuality(quality);
+        if (verdict === 'dark' || verdict === 'blank' || verdict === 'frozen') report(verdict);
+      }
+
       const result = jsQR(image.data, image.width, image.height, {
         inversionAttempts: robust ? 'attemptBoth' : 'dontInvert',
       });
       if (!result || result.data.length === 0) return;
+      decodedFrames += 1;
       decodedAny = true;
       // A held-still camera returns the same code many times per second; feed each
       // distinct code once, but re-feed after a while so a lost frame can be re-seen.
@@ -164,9 +225,25 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
 
   frameHandle = requestAnimationFrame(tick);
 
+  /*
+   * Nothing has arrived at all.
+   *
+   * `tick` returns silently while `videoWidth` is 0, so a preview that never starts produced no
+   * error, no hint change and no progress — the exact shape of 「一直没反应」. This says it out
+   * loud instead, once, three seconds in.
+   */
+  const watchdog = window.setTimeout(() => {
+    if (!running || decodedAny) return;
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      report('no-signal');
+      onError?.(new Error('摄像头已打开，但没有拿到任何画面。请退出后重试，或重启手机。'));
+    }
+  }, NO_SIGNAL_AFTER_MS);
+
   return {
     collector,
     stop: () => {
+      window.clearTimeout(watchdog);
       running = false;
       cancelAnimationFrame(frameHandle);
       for (const track of stream.getTracks()) track.stop();
@@ -206,19 +283,25 @@ export function scanHint(input: {
   progress: FrameCollectorProgress | null;
 }): string {
   if (input.progress !== null && input.progress.solved > 0) return input.progress.hint;
-  if (input.status === null || input.status.phase === 'opening') return '正在打开摄像头…';
-  if (input.status.phase === 'searching') {
-    // The scanner has switched to full-resolution, polarity-agnostic decoding by now, so the
-    // advice is about the only variables left in the user's hands.
-    return '还没扫到（已切到精细识别）：两个屏幕靠近些、调高插件端亮度、拿稳';
+  const phase = input.status?.phase ?? 'opening';
+  switch (phase) {
+    case 'opening':
+      return '正在打开摄像头…';
+    case 'live':
+      return '把二维码放进取景框';
+    case 'searching':
+      // The scanner has switched to full-resolution, polarity-agnostic decoding by now, so the
+      // advice is about the only variables left in the user's hands.
+      return '还没扫到：两个屏幕靠近些、调高插件端亮度、拿稳';
+    case 'no-signal':
+      return '摄像头打开了，但没有画面——退出这一步重进，或重启手机';
+    case 'dark':
+      return '画面几乎全黑：镜头可能被挡住了，或者环境太暗';
+    case 'blank':
+      return '画面没有对比度：镜头离屏幕太近或太亮，拿远一点、降低插件端亮度';
+    case 'frozen':
+      return '画面卡住不动了：退出这一步重进（摄像头没有在出新画面）';
+    default:
+      return '把二维码放进取景框';
   }
-  return '把二维码放进取景框';
-}
-
-/** One line about the stream itself, so a soft picture has a number attached to it. */
-export function scanCameraNote(info: CameraInfo | null): string | null {
-  if (info === null || info.width === 0) return null;
-  const size = `${info.width}×${info.height}`;
-  if (info.width >= SHARP_WIDTH) return `摄像头 ${size}`;
-  return `摄像头只有 ${size}，画面会偏糊，把二维码放近一点`;
 }

@@ -70,15 +70,12 @@ export function QrDisplay({
 export function CameraStage({
   videoRef,
   hint,
-  note,
   progressLabel,
   progressValue,
   tone,
 }: {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   hint: string;
-  /** Something the user should know about the stream itself, such as its real resolution. */
-  note?: string | null;
   progressLabel?: string;
   progressValue?: number;
   tone?: 'neutral' | 'up';
@@ -103,7 +100,6 @@ export function CameraStage({
         </div>
       ) : null}
       <div className="np-body np-body--tight np-center">{hint}</div>
-      {note ? <div className="np-body np-body--tight np-center np-ink-3">{note}</div> : null}
     </div>
   );
 }

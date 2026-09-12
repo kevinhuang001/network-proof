@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { Alert, Button, Header } from '../components/primitives';
 import { TextField } from '@netproof/ui/text-field';
 import { QR_PRESET_ORDER } from '../lib/qrPresets';
+import { lastScanReport } from '../lib/scanner';
+import type { ScanPhase } from '../lib/scanner';
 import { useSession } from '../state/session';
 
 /**
@@ -12,6 +14,52 @@ import { useSession } from '../state/session';
  * configure, and every extra line here is a line the user has to read before they can
  * get back to the two things the device is for.
  */
+/**
+ * The last scan, as numbers.
+ *
+ * Not on the scan screen — a resolution under a viewfinder is a number to read at the wrong
+ * moment — but this is the first thing a person asked to help needs, and "it is blurry" is not
+ * a debugging method. Empty until a scan has run in this session.
+ */
+const PHASE_LABEL: Record<ScanPhase, string> = {
+  opening: '正在打开',
+  live: '画面正常',
+  searching: '没扫到二维码',
+  'no-signal': '摄像头没有出画面',
+  dark: '画面全黑（镜头被挡或环境太暗）',
+  blank: '画面没有对比度',
+  frozen: '画面卡住不动',
+};
+
+function CameraCard(): ReactNode {
+  const report = lastScanReport();
+  if (report === null) return null;
+  const info = report.info;
+  return (
+    <div className="np-card">
+      <div className="np-label">上次扫码</div>
+      <div className="np-row np-row--between" style={{ marginTop: 8 }}>
+        <span className="np-body">摄像头</span>
+        <span className="np-body np-num">
+          {info && info.width > 0
+            ? `${info.width}×${info.height}${info.frameRate === null ? '' : ` @${info.frameRate}`}`
+            : '未知'}
+        </span>
+      </div>
+      <div className="np-row np-row--between">
+        <span className="np-body">画面</span>
+        <span className="np-body">{PHASE_LABEL[report.phase]}</span>
+      </div>
+      <div className="np-row np-row--between">
+        <span className="np-body">已采样 / 已解出</span>
+        <span className="np-body np-num">
+          {report.frames} / {report.decoded}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function DiagnosticsScreen({
   onBack,
   onWipe,
@@ -27,6 +75,7 @@ export function DiagnosticsScreen({
     <>
       <Header title="设置" onBack={onBack} />
       <div className="np-main">
+        <CameraCard />
         <div className="np-card">
           <div className="np-label">扫码速度</div>
           <div className="np-chip-row" style={{ marginTop: 10 }}>

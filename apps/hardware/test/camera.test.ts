@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SHARP_WIDTH, cameraInfo, pickRearCameraId } from '../src/lib/camera';
-import { scanCameraNote, scanHint } from '../src/lib/scanner';
+import { cameraInfo, pickRearCameraId } from '../src/lib/camera';
+import { scanHint } from '../src/lib/scanner';
 import type { FrameCollectorProgress } from '@netproof/core';
 
 /**
@@ -76,22 +76,22 @@ describe('what the scan screen says', () => {
     expect(scanHint({ status: { phase: 'searching', info: null }, progress: null })).toContain('还没扫到');
   });
 
+  it('names the failures a user can act on', () => {
+    // Four problems that look identical from the outside: nothing is being decoded.
+    const hint = (phase: 'no-signal' | 'dark' | 'blank' | 'frozen') =>
+      scanHint({ status: { phase, info: null }, progress: null });
+    expect(hint('no-signal')).toContain('没有画面');
+    expect(hint('dark')).toContain('全黑');
+    expect(hint('blank')).toContain('对比度');
+    expect(hint('frozen')).toContain('卡住');
+    // And a live camera that simply has not seen the code yet says so, without blaming itself.
+    expect(scanHint({ status: { phase: 'live', info: null }, progress: null })).toBe('把二维码放进取景框');
+  });
+
   it('hands over to the transfer once frames are arriving', () => {
     // Progress beats status: the moment a code is being read, the count is the useful thing.
     expect(scanHint({ status: { phase: 'live', info: null }, progress: progress(3) })).toBe('3/12 分片');
     expect(scanHint({ status: { phase: 'searching', info: null }, progress: progress(1) })).toBe('1/12 分片');
   });
 
-  it('puts a number on a soft picture', () => {
-    expect(scanCameraNote(null)).toBeNull();
-    expect(scanCameraNote({ width: 0, height: 0, frameRate: null, label: '', facingMode: null })).toBeNull();
-    expect(
-      scanCameraNote({ width: 1920, height: 1080, frameRate: 30, label: '', facingMode: null }),
-    ).toBe('摄像头 1920×1080');
-    // The number that explains the blur, and what to do about it.
-    const low = scanCameraNote({ width: 640, height: 480, frameRate: 30, label: '', facingMode: null });
-    expect(low).toContain('640×480');
-    expect(low).toContain('放近');
-    expect(SHARP_WIDTH).toBe(960);
-  });
 });

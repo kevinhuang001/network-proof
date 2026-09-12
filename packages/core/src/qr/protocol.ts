@@ -3,7 +3,8 @@ import { NetProofError } from '../errors';
 import { concat, fromHex, toHex, u32be, utf8 } from '../util/bytes';
 import { bytesToUint256, decodeCbor, encodeCbor, uint256ToBytes } from './cbor';
 import type { CborValue } from './cbor';
-import { buildFrameSequence, FrameCollector } from './frames';
+import { buildFrameSequence, chooseFragmentLength, FrameCollector } from './frames';
+import { DEFAULT_FRAGMENT_LENGTH } from './fountain';
 import type { AnimatedFrames } from './frames';
 import { publicKeyToAddress, derivePath, EVM_SCHEMES, getScheme, fillTemplate } from '../crypto/hd';
 import { HDKey } from '@scure/bip32';
@@ -518,6 +519,29 @@ export function buildSignRequestMessage(
 ): SignRequestMessage {
   const withVersion = { ...request, v: PROTOCOL_VERSION } as Omit<SignRequestMessage, 'claim'>;
   return { ...withVersion, claim: signRequestClaim(withVersion) } as SignRequestMessage;
+}
+
+/**
+ * Frames for a message, with the fragment size chosen from the payload.
+ *
+ * `framesForMessage` takes a fragment length and trusts the caller to know how dense that makes
+ * the code. This one measures the encoded message first and picks the largest fragment that
+ * keeps a frame inside `TARGET_FRAME_CHARS`, which is what the display side always wants and
+ * what it used to get wrong: a 315-byte request shown at 300 bytes per frame is a 73-module
+ * code, and a phone camera reading another screen's 73-module code is a phone camera that
+ * reports 「扫不到」.
+ *
+ * `ceiling` is the user's speed preset: it is honoured as an upper bound, never exceeded.
+ */
+export function autoFramesForMessage(
+  type: 'NP-XPUB' | 'NP-REQ' | 'NP-SIG' | 'NP-ACK',
+  message: ProtocolMessage,
+  ceiling?: number,
+): AnimatedFrames {
+  const payload = encodeMessage(message);
+  return buildFrameSequence(type, payload, {
+    fragmentLength: chooseFragmentLength(payload.length, ceiling ?? DEFAULT_FRAGMENT_LENGTH),
+  });
 }
 
 export function framesForMessage(

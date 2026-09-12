@@ -19,14 +19,18 @@ import {
 } from '../src/qr/fountain';
 import {
   FrameCollector,
+  MAX_AUTO_FRAMES,
   MAX_MESSAGE_BYTES,
+  TARGET_FRAME_CHARS,
   buildFrameSequence,
+  chooseFragmentLength,
   encodeFrameBinary,
   frameText,
   parseFrame,
 } from '../src/qr/frames';
 import {
   PROTOCOL_VERSION,
+  autoFramesForMessage,
   buildSignRequestMessage,
   buildXpubMessage,
   collectorFor,
@@ -674,3 +678,79 @@ describe('protocol messages', () => {
 function TextDrbg(length: number, seed = 'text-drbg'): Uint8Array {
   return new TestDrbg(seed).bytes(length);
 }
+
+describe('how dense a frame is allowed to be', () => {
+  /*
+   * The fix for 「扫不到二维码」, measured rather than guessed.
+   *
+   * A signing request is 315 bytes of CBOR and an xpub export 476. At the old flat 300-byte
+   * fragment both became **73×73 module** codes. The phone has to resolve every module of
+   * another screen's QR through its camera, and 73 modules across the middle square of a
+   * 480-pixel scan is about four pixels per module — which is where jsQR stops working.
+   * Choosing the fragment length from the payload puts the same request at 128 bytes per
+   * frame: eight frames instead of seven, and about 53 modules instead of 73.
+   */
+  const frameChars = (fragmentLength: number): number => Math.ceil((fragmentLength * 8) / 5) + 31;
+
+  it('keeps a small payload inside the module budget', () => {
+    for (const payload of [100, 183, 315, 476, 900]) {
+      const chosen = chooseFragmentLength(payload, 300);
+      expect(frameChars(chosen), `${payload}B must stay under the budget`).toBeLessThanOrEqual(
+        TARGET_FRAME_CHARS,
+      );
+    }
+  });
+
+  it('never exceeds the ceiling the user chose', () => {
+    for (const ceiling of [100, 200, 300, 500]) {
+      expect(chooseFragmentLength(315, ceiling)).toBeLessThanOrEqual(ceiling);
+    }
+    // A payload too big to fit the budget in a sane number of frames keeps the ceiling:
+    // waiting through thirty frames is worse than a dense code.
+    expect(chooseFragmentLength(3000, 300)).toBe(300);
+    expect(chooseFragmentLength(3000, 500)).toBe(500);
+  });
+
+  it('still produces a transfer that can finish', () => {
+    const payload = new Uint8Array(315);
+    const frames = buildFrameSequence('NP-REQ', payload, {
+      fragmentLength: chooseFragmentLength(payload.length, 300),
+    });
+    expect(frames.frames.length).toBeLessThanOrEqual(MAX_AUTO_FRAMES);
+    expect(frames.idealScans).toBeGreaterThan(0);
+    expect(frames.idealScans).toBeLessThanOrEqual(frames.fragmentCount);
+  });
+
+  it('picks the density for a real message, end to end', () => {
+    const request = buildSignRequestMessage({
+      t: 'req',
+      id: '0x00',
+      kind: 'tx',
+      path: "m/44'/60'/0'/0/0",
+      address: '0x9858EfFD232B4033E47d90003D41EC34EcaEda94',
+      chainId: 1,
+      origin: 'https://app.example.org',
+      tx: {
+        type: 'eip1559',
+        nonce: 1,
+        to: null,
+        value: '1',
+        data: '0x',
+        gas: '21000',
+        maxFeePerGas: '1',
+        maxPriorityFeePerGas: '1',
+      },
+    });
+    const built = autoFramesForMessage('NP-REQ', request, 300);
+    expect(built.frames.length).toBeGreaterThan(1);
+    // The bound is on the fragments the encoder produced, which is where the density comes from.
+    expect(frameChars(built.messageLength / built.fragmentCount)).toBeLessThanOrEqual(
+      TARGET_FRAME_CHARS + 40,
+    );
+  });
+
+  it('handles the degenerate cases without looping or dividing by zero', () => {
+    expect(chooseFragmentLength(0, 300)).toBe(300);
+    expect(chooseFragmentLength(1, 300)).toBe(128);
+  });
+});

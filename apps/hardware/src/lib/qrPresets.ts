@@ -8,6 +8,12 @@
  * Bigger `fragmentLength` means more bytes per frame, so fewer frames to scan but denser
  * codes that are harder for a phone camera to resolve. `frameDurationMs` is how long each
  * frame is held.
+ *
+ * `fragmentLength` is now a **ceiling**, not a decision: `autoFramesForMessage` lowers it until
+ * a frame is small enough for a camera to resolve, and only comes back up to the ceiling when
+ * doing so would stretch the transfer over `MAX_AUTO_FRAMES` frames. The three presets keep
+ * their meaning for large payloads — an EIP-712 request with a big struct — and for the small
+ * ones they converge, because density is what decides whether a code scans at all.
  */
 export interface QrSpeedPreset {
   /** Bytes carried per frame. */

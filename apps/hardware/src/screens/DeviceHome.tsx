@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import {
   buildXpubMessage,
   deriveSolanaKeypair,
-  framesForMessage,
+  autoFramesForMessage,
   mnemonicToSeed,
   solanaAccountPaths,
 } from '@netproof/core';
@@ -409,7 +409,7 @@ export function LoginQrScreen({ onBack }: { onBack: () => void }): ReactNode {
       },
       deviceInfo,
     );
-    return framesForMessage('NP-XPUB', message, scanSpeed.preset.fragmentLength).frames;
+    return autoFramesForMessage('NP-XPUB', message, scanSpeed.preset.fragmentLength).frames;
   }, [
     wallet,
     deviceInfo,

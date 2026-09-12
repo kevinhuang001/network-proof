@@ -9,7 +9,7 @@ import {
   describePersonalMessage,
   describeTransaction,
   describeTypedData,
-  framesForMessage,
+  autoFramesForMessage,
   fromHex,
   hashPersonalMessage,
   hashTypedDataPayload,
@@ -33,7 +33,7 @@ import { CameraStage, QrDisplay } from '../components/QrDisplay';
 import { isAbortError } from '../lib/camera';
 import { ROBUST_FALLBACK_MS } from '../lib/qrPresets';
 import { useRobustQrFallback } from '../lib/useRobustQrFallback';
-import { scanCameraNote, scanHint, startQrScan } from '../lib/scanner';
+import { scanHint, startQrScan } from '../lib/scanner';
 import type { ScanStatus } from '../lib/scanner';
 import type { ScanHandle } from '../lib/scanner';
 import { useSession } from '../state/session';
@@ -129,7 +129,6 @@ export function ScanRequestScreen({
           <CameraStage
             videoRef={videoRef}
             hint={scanHint({ status, progress })}
-            note={scanCameraNote(status?.info ?? null)}
             progressLabel={progress?.total ? `${progress.solved}/${progress.total} 分片` : '等待二维码'}
             progressValue={fraction}
             tone={fraction >= 1 ? 'up' : 'neutral'}
@@ -426,7 +425,7 @@ export function SignatureScreen({
     frameDurationMs: settings.qrFrameDurationMs,
   });
   const frames = useMemo(
-    () => framesForMessage('NP-SIG', response, scanSpeed.preset.fragmentLength).frames,
+    () => autoFramesForMessage('NP-SIG', response, scanSpeed.preset.fragmentLength).frames,
     [response, scanSpeed.preset.fragmentLength],
   );
 
