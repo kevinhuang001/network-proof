@@ -31,6 +31,7 @@ import {
 import {
   PROTOCOL_VERSION,
   autoFramesForMessage,
+  singleFrameForMessage,
   buildSignRequestMessage,
   buildXpubMessage,
   collectorFor,
@@ -752,5 +753,72 @@ describe('how dense a frame is allowed to be', () => {
   it('handles the degenerate cases without looping or dividing by zero', () => {
     expect(chooseFragmentLength(0, 300)).toBe(300);
     expect(chooseFragmentLength(1, 300)).toBe(128);
+  });
+});
+
+describe('sending a small message as one static code', () => {
+  /*
+   * The timing problem, removed rather than tuned.
+   *
+   * A device decoding at about one frame per second cannot follow a code that changes every
+   * 420 ms: most attempts land on a frame that is already gone, and the report from the phone
+   * was 「18/0」 — eighteen frames sampled, none decoded. A signing request fits in a single
+   * code, so it is sent as one.
+   */
+  const request = (): SignRequestMessage =>
+    buildSignRequestMessage({
+      t: 'req',
+      id: '0x00',
+      kind: 'tx',
+      path: "m/44'/60'/0'/0/0",
+      address: '0x9858EfFD232B4033E47d90003D41EC34EcaEda94',
+      chainId: 1,
+      origin: 'https://app.example.org',
+      tx: {
+        type: 'eip1559',
+        nonce: 1,
+        to: null,
+        value: '1',
+        data: '0x',
+        gas: '21000',
+        maxFeePerGas: '1',
+        maxPriorityFeePerGas: '1',
+      },
+    });
+
+  it('fits a signing request into exactly one frame', () => {
+    const built = singleFrameForMessage('NP-REQ', request());
+    expect(built).not.toBeNull();
+    expect(built!.frames).toHaveLength(1);
+    expect(built!.fragmentCount).toBe(1);
+    expect(built!.frames[0]!.length).toBeLessThan(820);
+  });
+
+  it('round-trips through a single frame', () => {
+    // One scan has to be the whole transfer: the collector must complete on the first frame.
+    const built = singleFrameForMessage('NP-REQ', request())!;
+    const collector = new FrameCollector('NP-REQ');
+    const progress = collector.addText(built.frames[0]!);
+    expect(progress.solved).toBe(1);
+    expect(collector.complete).toBe(true);
+    const decoded = decodeMessage(collector.result());
+    expect(decoded.t).toBe('req');
+    expect(decoded).toMatchObject({ address: '0x9858EfFD232B4033E47d90003D41EC34EcaEda94' });
+  });
+
+  it('refuses to make one code out of something too large', () => {
+    // An xpub export with many accounts, or an EIP-712 payload, is the animation's job: a code
+    // dense enough to hold it would not be readable at any distance.
+    const huge = buildSignRequestMessage({
+      ...request(),
+      kind: 'typed',
+      typed: {
+        domain: { name: 'x'.repeat(600) },
+        types: { Mail: [{ name: 'contents', type: 'string' }] },
+        primaryType: 'Mail',
+        message: { contents: 'y'.repeat(600) },
+      },
+    } as never);
+    expect(singleFrameForMessage('NP-REQ', huge)).toBeNull();
   });
 });

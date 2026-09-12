@@ -10,6 +10,7 @@ import {
   describeTransaction,
   describeTypedData,
   autoFramesForMessage,
+  singleFrameForMessage,
   fromHex,
   hashPersonalMessage,
   hashTypedDataPayload,
@@ -136,6 +137,12 @@ export function ScanRequestScreen({
         )}
 
         {error ? <Alert tone="danger">{error}</Alert> : null}
+        {progress && progress.rejectedFrames > 3 ? (
+          <Alert tone="warn" title="扫到了别的二维码">
+            摄像头读出了二维码，但它不是这次要签名的请求（类型不符或属于另一次传输）。
+            请确认插件钱包屏幕上显示的就是当前这笔请求。
+          </Alert>
+        ) : null}
         {progress && progress.duplicateFrames > 10 ? (
           <Alert tone="warn">重复扫到同一帧，请确认插件钱包的二维码动画正在播放。</Alert>
         ) : null}
@@ -425,7 +432,11 @@ export function SignatureScreen({
     frameDurationMs: settings.qrFrameDurationMs,
   });
   const frames = useMemo(
-    () => autoFramesForMessage('NP-SIG', response, scanSpeed.preset.fragmentLength).frames,
+    () =>
+      // Same reasoning as the companion's request code: a signature is small enough to be one
+      // static code, and a static code is one the webcam can catch whenever it is ready.
+      singleFrameForMessage('NP-SIG', response)?.frames ??
+      autoFramesForMessage('NP-SIG', response, scanSpeed.preset.fragmentLength).frames,
     [response, scanSpeed.preset.fragmentLength],
   );
 

@@ -8,6 +8,7 @@ import {
   describeTypedData,
   fromHex,
   autoFramesForMessage,
+  singleFrameForMessage,
   hashPersonalMessage,
   hashTypedDataPayload,
   toHex,
@@ -421,13 +422,45 @@ export function SignScreen({ id }: { id: string }): ReactNode {
     onText,
   });
 
-  const frames = useMemo(
-    () =>
-      outgoing
-        ? autoFramesForMessage('NP-REQ', outgoing.message, settings.qrFragmentLength).frames
-        : [],
-    [outgoing, settings.qrFragmentLength],
-  );
+  /**
+   * One static code, not an animation.
+   *
+   * A device decoding an old phone's camera manages roughly one frame per second; a code that
+   * changes every 420 ms means most attempts land on a code that has already gone, and the
+   * report from the other end was 「18/0」 — eighteen frames sampled, none decoded. A signing
+   * request fits in a single code (535 characters, 77 modules, about nine camera pixels per
+   * module at arm's length), and a static code waits for as long as the user needs.
+   *
+   * The animation stays one tap away for a camera that cannot resolve a denser code, and is the
+   * only option for a payload too big to be one.
+   */
+  const [forceAnimated, setForceAnimated] = useState(false);
+  /**
+   * Whether to hold each animated frame longer.
+   *
+   * The device decodes about one frame a second on an old phone; a code that changes every
+   * 420 ms is a code that is gone before most attempts finish. There is no channel back from the
+   * device to say this, so it is a guess about time — the same honest guess the device makes for
+   * the codes it displays, and a wrong guess costs only a slower transfer.
+   */
+  const [holdLonger, setHoldLonger] = useState(false);
+  useEffect(() => {
+    if (stageNow !== 'code') return;
+    const timer = window.setTimeout(() => setHoldLonger(true), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [stageNow]);
+  const display = useMemo(() => {
+    if (!outgoing) return { frames: [] as string[], animated: false };
+    if (!forceAnimated) {
+      const single = singleFrameForMessage('NP-REQ', outgoing.message);
+      if (single) return { frames: single.frames, animated: false };
+    }
+    return {
+      frames: autoFramesForMessage('NP-REQ', outgoing.message, settings.qrFragmentLength).frames,
+      animated: true,
+    };
+  }, [outgoing, settings.qrFragmentLength, forceAnimated]);
+  const frames = display.frames;
 
   if (state.step === 'loading') {
     return (
@@ -709,11 +742,28 @@ export function SignScreen({ id }: { id: string }): ReactNode {
                 二维码暂时取下：价格变了，要签的交易也变了，旧的那张不能再扫。
               </Alert>
             ) : frames.length > 0 ? (
-              <QrDisplay
-                frames={frames}
-                frameDurationMs={settings.qrFrameDurationMs}
-                caption="用离线手机扫描这个二维码"
-              />
+              <>
+                <QrDisplay
+                  frames={frames}
+                  frameDurationMs={
+                    holdLonger
+                      ? Math.max(settings.qrFrameDurationMs, 900)
+                      : settings.qrFrameDurationMs
+                  }
+                  // A single code is photographed once by hand, so it carries more redundancy
+                  // than the app default; the animation keeps the default, where every module
+                  // costs scanning time.
+                  {...(display.animated ? {} : { errorCorrectionLevel: 'Q' as const })}
+                  caption={
+                    display.animated
+                      ? '用离线手机扫描这个二维码（动画）'
+                      : '用离线手机扫描这个二维码'
+                  }
+                />
+                <Button variant="ghost" onClick={() => setForceAnimated((value) => !value)}>
+                  {display.animated ? '换成单张二维码' : '扫不上？换成动画'}
+                </Button>
+              </>
             ) : null}
 
             {/*

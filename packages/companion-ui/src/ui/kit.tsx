@@ -180,10 +180,19 @@ export function QrDisplay({
   frames,
   frameDurationMs,
   caption,
+  errorCorrectionLevel,
 }: {
   frames: string[];
   frameDurationMs?: number;
   caption?: string;
+  /**
+   * Damage tolerance of the code.
+   *
+   * A static code gets 'Q' rather than the app default: it is photographed once, from a phone
+   * held by hand, and the extra redundancy is paid for in modules — which this code has to
+   * spare, unlike the animated frames.
+   */
+  errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H';
 }): ReactNode {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [index, setIndex] = useState(0);
@@ -194,7 +203,9 @@ export function QrDisplay({
     // Encode every frame once, up front: re-encoding during the animation would
     // make the code stutter, and a stuttering code is a code that will not scan.
     const prepared = frames.map((text) => {
-      const created = QRCode.create(text, { errorCorrectionLevel: qrTokens.errorCorrectionLevel });
+      const created = QRCode.create(text, {
+        errorCorrectionLevel: errorCorrectionLevel ?? qrTokens.errorCorrectionLevel,
+      });
       return { modules: created.modules.data, size: created.modules.size };
     });
     const moduleCount = prepared.reduce((max, matrix) => Math.max(max, matrix.size), 0);
@@ -236,7 +247,7 @@ export function QrDisplay({
       paint(position);
     }, frameDurationMs ?? qrTokens.frameDurationMs);
     return () => window.clearInterval(timer);
-  }, [frames, frameDurationMs]);
+  }, [frames, frameDurationMs, errorCorrectionLevel]);
 
   return (
     <div className="np-stack">

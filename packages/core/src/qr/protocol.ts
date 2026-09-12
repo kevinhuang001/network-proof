@@ -544,6 +544,31 @@ export function autoFramesForMessage(
   });
 }
 
+/**
+ * One frame carrying the whole message: no fountain code, no animation, no timing.
+ *
+ * A signing request is 315 bytes, which is 535 characters of base32 — a 77-module QR code, and
+ * at the distance a phone is held from a screen that is about nine camera pixels per module,
+ * where decoding is comfortable. Sending it as a *single* code rather than an animation removes
+ * the failure mode that is hardest to see from either side: the device decodes about one frame
+ * per second on an old phone, and a code that changes every 420 ms means most attempts land on a
+ * code that is already gone. A static code waits for as long as the user needs.
+ *
+ * Returns null when the message is too large to be one code of a sane density — the caller falls
+ * back to the animation, which is what the fountain code is for.
+ */
+export function singleFrameForMessage(
+  type: 'NP-XPUB' | 'NP-REQ' | 'NP-SIG' | 'NP-ACK',
+  message: ProtocolMessage,
+  maxChars = 820,
+): AnimatedFrames | null {
+  const payload = encodeMessage(message);
+  const built = buildFrameSequence(type, payload, { fragmentLength: payload.length, frameCount: 1 });
+  const text = built.frames[0];
+  if (text === undefined || text.length > maxChars) return null;
+  return built;
+}
+
 export function framesForMessage(
   type: 'NP-XPUB' | 'NP-REQ' | 'NP-SIG' | 'NP-ACK',
   message: ProtocolMessage,

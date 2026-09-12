@@ -51,9 +51,9 @@ function CameraCard(): ReactNode {
         <span className="np-body">{PHASE_LABEL[report.phase]}</span>
       </div>
       <div className="np-row np-row--between">
-        <span className="np-body">已采样 / 已解出</span>
+        <span className="np-body">已采样 / 已解出 / 读错</span>
         <span className="np-body np-num">
-          {report.frames} / {report.decoded}
+          {report.frames} / {report.decoded} / {report.rejected}
         </span>
       </div>
       <div className="np-row np-row--between">

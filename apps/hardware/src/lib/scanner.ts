@@ -34,6 +34,16 @@ const ROBUST_DECODE_AFTER_MS = 1500;
 const NO_SIGNAL_AFTER_MS = 3000;
 
 /**
+ * The square the user is told to fill, as a fraction of the sampled square.
+ *
+ * The reticle is 72% of the viewfinder, so that is where the code is when the user does what the
+ * screen says. Sampling that region first halves the pixels the decoder has to chew through —
+ * which, on a phone that manages about one decode a second, is one more attempt a second.
+ * The full square is still tried when the reticle fails, for a code held off-centre.
+ */
+const RETICLE_FRACTION = 0.72;
+
+/**
  * The largest crop handed to the decoder in the thorough mode.
  *
  * jsQR's cost grows with pixels, and on an old phone a 1080² decode takes a good fraction of a
@@ -75,6 +85,15 @@ export interface ScanReport {
   /** Frames sampled since the camera opened. */
   frames: number;
   decoded: number;
+  /**
+   * Codes jsQR *did* find but the collector could not use.
+   *
+   * The difference between this and zero is the difference between "the camera cannot see a QR
+   * code" and "it sees one that is not the transfer we are waiting for" — a wrong type, a
+   * different transfer, or a misread frame. Those need opposite advice, and until this number
+   * existed they looked identical from the outside.
+   */
+  rejected: number;
   /** Measured size of the code in view, when one could be measured. */
   estimate: FinderEstimate | null;
 }
@@ -147,6 +166,7 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
   let lastVerdict: ScanStatus['phase'] | null = null;
   let frames = 0;
   let decodedFrames = 0;
+  let rejectedFrames = 0;
   let lastFinderAt = 0;
   let lastAdvice: string | null = null;
 
@@ -158,6 +178,7 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
       info: cameraInfo(stream),
       frames,
       decoded: decodedFrames,
+      rejected: rejectedFrames,
       estimate: estimate ?? null,
     };
     if (lastVerdict === phase && estimate === undefined) return;
@@ -210,17 +231,30 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
        * has least of: at 480, a code filling the frame lands at four pixels per module, and
        * four is where jsQR stops.
        */
-      const crop = Math.min(side, DETAIL_CROP_MAX);
-      if (canvas.width !== crop) {
-        canvas.width = crop;
-        canvas.height = crop;
-      }
-      // Smoothing is the *correct* way to reduce an image, and must stay off at 1:1 where
-      // there is nothing to interpolate.
-      context.imageSmoothingEnabled = crop < side;
-      context.imageSmoothingQuality = 'high';
-      context.drawImage(video, sx, sy, side, side, 0, 0, crop, crop);
-      const image = context.getImageData(0, 0, crop, crop);
+      /*
+       * Two windows, reticle first.
+       *
+       * `draw` returns the sampled image and how many source pixels it covers, so the caller can
+       * try the second window only if the first found nothing.
+       */
+      const draw = (fraction: number): { image: ImageData; source: number } => {
+        const source = Math.max(16, Math.round(side * fraction));
+        const crop = Math.min(source, DETAIL_CROP_MAX);
+        if (canvas.width !== crop) {
+          canvas.width = crop;
+          canvas.height = crop;
+        }
+        // Smoothing is the *correct* way to reduce an image, and must stay off at 1:1 where
+        // there is nothing to interpolate.
+        context.imageSmoothingEnabled = crop < source;
+        context.imageSmoothingQuality = 'high';
+        const left = sx + (side - source) / 2;
+        const top = sy + (side - source) / 2;
+        context.drawImage(video, left, top, source, source, 0, 0, crop, crop);
+        return { image: context.getImageData(0, 0, crop, crop), source };
+      };
+
+      let { image, source: crop } = draw(RETICLE_FRACTION);
 
       /*
        * How the frame looks, before asking whether it contains a code.
@@ -268,6 +302,19 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
        * Only for small crops: enlarging a 1080-pixel square fourfold would cost seconds of
        * decoding for a code that already had every pixel it needed.
        */
+      if (!result && !decodedAny) {
+        // The code may be outside the reticle — the user may be holding it high or low. Half a
+        // second of decoding is worth it before telling them to move.
+        if (crop < side) {
+          const wider = draw(1);
+          image = wider.image;
+          crop = wider.source;
+          result = jsQR(image.data, image.width, image.height, {
+            inversionAttempts: robust ? 'attemptBoth' : 'dontInvert',
+          });
+        }
+      }
+
       if (!result && robust && crop * 2 <= DETAIL_CROP_MAX && enlargedContext) {
         const target = crop * 2;
         enlarged.width = target;
@@ -288,6 +335,7 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
       lastTextAt = now;
 
       const progress = collector.addText(result.data);
+      if (progress.rejectedFrames > rejectedFrames) rejectedFrames = progress.rejectedFrames;
       onProgress(progress);
       if (collector.complete) {
         onComplete(collector.result());
@@ -357,6 +405,13 @@ export function scanHint(input: {
   progress: FrameCollectorProgress | null;
 }): string {
   if (input.progress !== null && input.progress.solved > 0) return input.progress.hint;
+  /*
+   * A code was read and could not be used: wrong type, a different transfer, a misread frame.
+   * Telling this user to move closer would be advice about the wrong problem.
+   */
+  if (input.progress !== null && input.progress.solved === 0 && input.progress.rejectedFrames > 3) {
+    return '扫到的是别的二维码：确认插件端显示的就是这次要签名的请求';
+  }
   const phase = input.status?.phase ?? 'opening';
   switch (phase) {
     case 'opening':
