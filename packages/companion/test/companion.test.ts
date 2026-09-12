@@ -19,7 +19,8 @@ import {
   visibleAccounts,
   walletFromXpubMessage,
 } from '../src/accounts';
-import { DEFAULT_SETTINGS, SOLANA_CHAIN_ID } from '../src/settings';
+import { DEFAULT_SETTINGS, SOLANA_CHAIN_ID, nativeSymbol } from '../src/settings';
+import { feeTiers, tierCost } from '../src/fees';
 import type { ConnectedWallet, PendingRequest } from '../src/types';
 
 /**
@@ -385,6 +386,64 @@ describe('building the request that goes to the device', () => {
     expect(message.tx?.maxFeePerGas).toBeUndefined();
   });
 
+  it('signs the fee the user chose, not the one the site asked for', async () => {
+    const wallet = makeWallet();
+    const account = primaryAccount(wallet, { ...DEFAULT_SETTINGS })!;
+    const asked: string[] = [];
+    const message = await buildTransactionRequest({
+      wallet,
+      settings: { ...DEFAULT_SETTINGS },
+      origin: 'https://app.example.org',
+      // The site proposes a price; the user picked a different one on the approval screen.
+      params: [
+        {
+          from: account.address,
+          to: VECTOR_ADDRESS,
+          gas: '0x5208',
+          maxFeePerGas: '0x4a817c800',
+          maxPriorityFeePerGas: '0x3b9aca00',
+        },
+      ],
+      fee: { maxFeePerGas: '0x2e90edd000', maxPriorityFeePerGas: '0x77359400' },
+      forward: async (method) => {
+        asked.push(method);
+        return method === 'eth_getTransactionCount' ? '0x1' : '0x0';
+      },
+    });
+    expect(message.tx?.type).toBe('eip1559');
+    expect(message.tx?.maxFeePerGas).toBe('200000000000');
+    expect(message.tx?.maxPriorityFeePerGas).toBe('2000000000');
+    // Nothing was asked of the node about price: the choice is already a number.
+    expect(asked).not.toContain('eth_gasPrice');
+    expect(asked).not.toContain('eth_maxPriorityFeePerGas');
+  });
+
+  it('lets a chosen legacy price win over a site-supplied EIP-1559 pair', async () => {
+    const wallet = makeWallet();
+    const account = primaryAccount(wallet, { ...DEFAULT_SETTINGS })!;
+    // On a chain without a base fee the tiers carry one price, and the shape of the
+    // transaction has to follow the price, not the request that arrived.
+    const message = await buildTransactionRequest({
+      wallet,
+      settings: { ...DEFAULT_SETTINGS },
+      origin: 'https://app.example.org',
+      params: [
+        {
+          from: account.address,
+          to: VECTOR_ADDRESS,
+          gas: '0x5208',
+          maxFeePerGas: '0x4a817c800',
+          maxPriorityFeePerGas: '0x3b9aca00',
+        },
+      ],
+      fee: { gasPrice: '0x4a817c800' },
+      forward: async (method) => (method === 'eth_getTransactionCount' ? '0x1' : '0x0'),
+    });
+    expect(message.tx?.type).toBe('legacy');
+    expect(message.tx?.gasPrice).toBe('20000000000');
+    expect(message.tx?.maxFeePerGas).toBeUndefined();
+  });
+
   it('refuses a request whose from address is not the active account', async () => {
     const wallet = makeWallet();
     await expect(
@@ -658,5 +717,62 @@ describe('the probes a connector makes after connecting', () => {
     // EIP-5792: `{}` is a legitimate "no optional capabilities" answer that a connector can
     // fall back from, where a 4200 is an error it may treat as fatal.
     expect((await handleRpc('wallet_getCapabilities', ['0xabc'], ctx)).result).toEqual({});
+  });
+});
+
+describe('the coin a fee is paid in', () => {
+  it('names each chain’s own coin, because fees are never paid in the token', () => {
+    // A transfer of USDC on Polygon costs POL. Showing "ETH" next to that fee — which is what
+    // a `chainId === 56 ? 'BNB' : 'ETH'` fallback does — is a wrong number in the only row
+    // where the user is deciding how much money to spend.
+    expect(nativeSymbol(1)).toBe('ETH');
+    expect(nativeSymbol(137)).toBe('POL');
+    expect(nativeSymbol(56)).toBe('BNB');
+    expect(nativeSymbol(43114)).toBe('AVAX');
+    expect(nativeSymbol(999999)).toBe('ETH');
+  });
+});
+
+describe('fee tiers', () => {
+  const GWEI = 1_000_000_000n;
+
+  it('prices three tiers around the base fee, and orders them', () => {
+    const tiers = feeTiers({ baseFeePerGas: 10n * GWEI, priorityFeePerGas: GWEI, gasPrice: 12n * GWEI });
+    expect(tiers.map((tier) => tier.id)).toEqual(['slow', 'market', 'fast']);
+
+    const ceilings = tiers.map((tier) => tier.maxFeePerGas!);
+    // Slow < market < fast, and every ceiling covers the base fee plus its own tip: a
+    // transaction that cannot pay the base fee is a transaction that cannot be included.
+    expect(ceilings[0]!).toBeLessThan(ceilings[1]!);
+    expect(ceilings[1]!).toBeLessThan(ceilings[2]!);
+    for (const [index, tier] of tiers.entries()) {
+      expect(ceilings[index]!).toBeGreaterThanOrEqual(10n * GWEI + tier.maxPriorityFeePerGas!);
+    }
+    // The tip is never zero: a zero tip is a transaction that waits.
+    for (const tier of tiers) expect(tier.maxPriorityFeePerGas!).toBeGreaterThan(0n);
+  });
+
+  it('leaves room for the base fee to rise while the transaction waits', () => {
+    const tiers = feeTiers({ baseFeePerGas: 100n * GWEI, priorityFeePerGas: GWEI, gasPrice: 101n * GWEI });
+    const market = tiers[1]!;
+    // The base fee can climb 12.5% per block, so a ceiling of exactly base + tip would be
+    // invalid by the next block.
+    expect(market.maxFeePerGas!).toBeGreaterThan(100n * GWEI + market.maxPriorityFeePerGas!);
+  });
+
+  it('falls back to a single price on a chain without EIP-1559', () => {
+    const tiers = feeTiers({ gasPrice: 20n * GWEI });
+    expect(tiers.every((tier) => tier.gasPrice !== undefined)).toBe(true);
+    expect(tiers.every((tier) => tier.maxFeePerGas === undefined)).toBe(true);
+    expect(tiers[0]!.gasPrice).toBe(18n * GWEI);
+    expect(tiers[1]!.gasPrice).toBe(20n * GWEI);
+    expect(tiers[2]!.gasPrice).toBe(25n * GWEI);
+  });
+
+  it('costs a tier out over the gas a transfer uses', () => {
+    const [market] = feeTiers({ gasPrice: 30n * GWEI }).slice(1);
+    // 21 000 gas at 30 gwei is 0.00063 ETH — the number the send screen used to hard-code as
+    // everyone's reserve, which is why a user with 0.001 ETH could "only" send 0.00037.
+    expect(tierCost(market!, 21_000n)).toBe(630_000_000_000_000n);
   });
 });

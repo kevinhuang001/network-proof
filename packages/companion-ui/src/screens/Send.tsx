@@ -2,8 +2,9 @@ import type { ReactNode } from 'react';
 import { TextArea, TextField } from '@netproof/ui/text-field';
 import { useEffect, useMemo, useState } from 'react';
 import { parseUnits, shortAddress } from '@netproof/core';
-import { chainLabel, fetchBalance, forwardToNode } from '@netproof/companion';
+import { chainLabel, fetchBalance, forwardToNode, nativeSymbol, tierCost } from '@netproof/companion';
 import { tokensForChain } from '../lib/store';
+import { useFeeTiers } from '../lib/fees';
 import {
   encodeErc20Transfer,
   fetchTokenBalance,
@@ -11,6 +12,7 @@ import {
   type CallFn,
 } from '../lib/tokens';
 import { useCompanion } from '../App';
+import { FeeSelector } from '../ui/FeeSelector';
 import { Alert, Badge, Button, Header, KeyValue, Spinner } from '../ui/kit';
 import { formatEth, useVisibleAccounts } from './Wallet';
 
@@ -72,7 +74,10 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
         : null,
     [tokenAddress, settings.chainId],
   );
-  const symbol = token?.symbol ?? (settings.chainId === 56 ? 'BNB' : 'ETH');
+  // Gas is paid in the chain's own coin even when the transfer is a token — so on Polygon the
+  // fee is in POL while the amount is in USDC, and the two rows must not share a symbol.
+  const feeSymbol = nativeSymbol(settings.chainId);
+  const symbol = token?.symbol ?? feeSymbol;
   const decimals = token?.decimals ?? 18;
 
   const [to, setTo] = useState('');
@@ -82,11 +87,15 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
   const [error, setError] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [balance, setBalance] = useState<bigint | null>(null);
-  const [fee, setFee] = useState<bigint | null>(null);
+  const [gasEstimate, setGasEstimate] = useState<bigint | null>(null);
 
   const rpcUrl = settings.rpcUrls[settings.chainId];
   const forward = (method: string, params: unknown[]) =>
     forwardToNode(method, params, { rpcUrl: rpcUrl ?? '', chainId: settings.chainId });
+  const { tiers, tierId, select, tier, load, feeError, fields } = useFeeTiers({
+    rpcUrl,
+    chainId: settings.chainId,
+  });
 
   // Load the balance lazily, so the form appears instantly and the number arrives
   // when it can. It is a convenience, never a gate.
@@ -121,36 +130,6 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
     }
   }, [amount, decimals]);
 
-  /*
-   * What a transfer costs right now.
-   *
-   * The "最大" button used to subtract a hard-coded 30 gwei × 21 000 — 0.00063 ETH, a number
-   * chosen on a busy mainnet day. On a cheap chain, or a quiet one, that reserve is many times
-   * the real fee, and the button quietly told the user they could only send a third of what
-   * they hold. The price comes from the node, and the fee is shown rather than assumed.
-   */
-  useEffect(() => {
-    if (!rpcUrl) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const price = BigInt((await forward('eth_gasPrice', [])) as string);
-        const priority = await forward('eth_maxPriorityFeePerGas', [])
-          .then((value) => BigInt(value as string))
-          .catch(() => price);
-        // A plain transfer costs exactly 21 000 gas; a contract call may cost more, which is
-        // why the estimate on the final transaction still wins at submit time.
-        if (!cancelled) setFee(21_000n * (price > priority ? price : priority));
-      } catch {
-        if (!cancelled) setFee(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rpcUrl, settings.chainId]);
-
   const addressValid = /^0x[0-9a-fA-F]{40}$/u.test(to.trim());
   const dataValid = /^0x([0-9a-fA-F]{2})*$/u.test(data.trim());
   const amountValid = parsed !== null && parsed > 0n;
@@ -171,7 +150,64 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
     return { to: to.trim(), value: parsed ?? 0n, data: data.trim() };
   }, [token, addressValid, parsed, to, data]);
 
-  const ready = wallet !== null && current !== undefined && addressValid && dataValid && (amountValid || isContractCall);
+  /*
+   * How much gas this transaction actually needs, so the cost shown is this transaction's
+   * cost and not a guess. An ERC-20 transfer is roughly 46 000 gas, more than twice a plain
+   * value transfer: pricing the chips at 21 000 would understate every token send.
+   *
+   * The estimate can fail in ways that are not errors yet — an empty form, an amount above
+   * the balance — and when it does the screen says nothing rather than something wrong.
+   */
+  useEffect(() => {
+    if (!call || !current || !rpcUrl) {
+      setGasEstimate(null);
+      return;
+    }
+    let cancelled = false;
+    // Debounced, because the amount is part of the call and this would otherwise be one
+    // estimate per keystroke.
+    const timer = window.setTimeout(() => {
+      void forwardToNode(
+        'eth_estimateGas',
+        [
+          {
+            from: current.address,
+            to: call.to,
+            value: `0x${call.value.toString(16)}`,
+            data: call.data,
+          },
+        ],
+        { rpcUrl, chainId: settings.chainId },
+      ).then(
+        (value) => {
+          if (!cancelled) setGasEstimate(BigInt(value as string));
+        },
+        () => {
+          if (!cancelled) setGasEstimate(null);
+        },
+      );
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [call?.to, call?.value, call?.data, current?.address, rpcUrl, settings.chainId]);
+
+  // 21 000 is the exact cost of a value transfer to an account, so it is a real answer even
+  // before the node replies; a contract call has no such default and waits for the estimate.
+  const gas = gasEstimate ?? (token === null && !isContractCall ? 21_000n : null);
+  const fee = tier && gas !== null ? tierCost(tier, gas) : null;
+
+  // `tier !== null` is part of readiness: without a price from the node there is nothing to
+  // put in the transaction, and a request with a zero fee cap is worse than a refusal.
+  const ready =
+    wallet !== null &&
+    current !== undefined &&
+    addressValid &&
+    dataValid &&
+    (amountValid || isContractCall) &&
+    tier !== null;
 
   const submit = async (): Promise<void> => {
     if (!current) return;
@@ -183,7 +219,7 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
       // putting a half-specified request in front of the user's device.
       if (!call) throw new Error('收款地址或金额还不完整');
       const nonce = Number(BigInt((await forward('eth_getTransactionCount', [current.address, 'pending'])) as string));
-      const gas = BigInt(
+      const gasLimit = BigInt(
         (await forward('eth_estimateGas', [
           {
             from: current.address,
@@ -193,10 +229,10 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
           },
         ])) as string,
       );
-      const gasPrice = BigInt((await forward('eth_gasPrice', [])) as string);
-      const maxPriorityFeePerGas = await forward('eth_maxPriorityFeePerGas', [])
-        .then((value) => BigInt(value as string))
-        .catch(() => gasPrice);
+      // The user's choice, in the shape this chain expects. `fields` is null only when the
+      // node never answered, and then the send button is disabled — a transaction with a zero
+      // fee cap is not a transaction.
+      if (!fields) throw new Error('还没有读到当前费率，请稍后重试');
 
       const id = requestSigning({
         kind: 'sendTransaction',
@@ -210,9 +246,8 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
             value: `0x${call.value.toString(16)}`,
             data: call.data,
             nonce: `0x${nonce.toString(16)}`,
-            gas: `0x${gas.toString(16)}`,
-            maxFeePerGas: `0x${gasPrice.toString(16)}`,
-            maxPriorityFeePerGas: `0x${maxPriorityFeePerGas.toString(16)}`,
+            gas: `0x${gasLimit.toString(16)}`,
+            ...fields,
           },
         ],
       });
@@ -317,6 +352,9 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
                   setAmount(formatTokenAmount(balance, token.decimals, token.decimals));
                   return;
                 }
+                // Reserve what the chosen speed actually costs for this transaction. If the
+                // chain has not answered yet, reserve a mainnet-ish 30 gwei × 21 000 rather
+                // than let the user build a transaction that cannot pay for itself.
                 const reserve = fee ?? 21_000n * 30_000_000_000n;
                 const spendable = balance > reserve ? balance - reserve : 0n;
                 setAmount(formatEth(spendable));
@@ -327,6 +365,17 @@ export function SendScreen({ token: tokenAddress }: { token?: string } = {}): Re
           ) : null}
         </div>
       </div>
+
+      <FeeSelector
+        tiers={tiers}
+        tierId={tierId}
+        onSelect={select}
+        gas={gas}
+        load={load}
+        feeError={feeError}
+        unit={feeSymbol}
+        pendingHint="填好收款地址后显示这笔交易的手续费"
+      />
 
       {/*
         Outlined, not text-only: this one opens a field rather than navigating, and a bare

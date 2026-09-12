@@ -72,6 +72,16 @@ export function isSolanaChain(chainId: number): boolean {
   return chainId === SOLANA_CHAIN_ID;
 }
 
+/**
+ * The symbol of a chain's own coin.
+ *
+ * Fees are always paid in it, whatever token is being moved, so any screen that prices a
+ * transaction needs it. The fallback keeps an unknown chain readable instead of blank.
+ */
+export function nativeSymbol(chainId: number): string {
+  return chainMeta(chainId)?.symbol ?? 'ETH';
+}
+
 export function chainLabel(chainId: number): string {
   return chainMeta(chainId)?.shortName ?? `Chain ${chainId}`;
 }

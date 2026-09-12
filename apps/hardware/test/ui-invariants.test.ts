@@ -321,6 +321,36 @@ describe('UI invariants', () => {
       expect(source, `${config} must target the WebView floor`).toContain("'chrome67'");
     }
   });
+  it('offers a fee choice wherever a transaction is built', () => {
+    /*
+     * Two screens turn user intent into a signed transaction: the send form, and the approval
+     * screen a dApp's request lands on. The approval screen is the one that used to have no
+     * price choice at all — a site named a fee and the user paid it, on a contract call that
+     * often moves nothing, which makes the fee the entire cost.
+     */
+    const send = readFileSync(join(repoRoot, 'packages/companion-ui/src/screens/Send.tsx'), 'utf8');
+    const sign = readFileSync(join(repoRoot, 'packages/companion-ui/src/screens/Sign.tsx'), 'utf8');
+
+    for (const [name, source] of [
+      ['Send.tsx', send],
+      ['Sign.tsx', sign],
+    ] as const) {
+      expect(source, `${name} must render the shared fee selector`).toContain('<FeeSelector');
+      expect(source, `${name} must read the chain's prices`).toContain('useFeeTiers(');
+    }
+
+    // The approval screen must hand the choice to the request builder, and it must not build
+    // one before the chain has answered — a fallback price would be the wallet's own guess
+    // wearing the clothes of the market's.
+    expect(sign).toContain('fee: fee.fields');
+    expect(sign).toMatch(/isTransaction && fee\.fields === null/u);
+
+    // Fee amounts are shown in the chain's own coin, which differs per chain. A hard-coded
+    // "BNB or ETH" answer labels Polygon fees as ETH.
+    expect(send).toContain('nativeSymbol(settings.chainId)');
+    expect(send).not.toMatch(/chainId === 56/u);
+  });
+
   it('routes every way out of a screen through the router, not around it', () => {
     // The Android back button is handled by the router, which owns the screen stack. A screen
     // that navigates by any other means — a raw history call, a fragment link — would move the

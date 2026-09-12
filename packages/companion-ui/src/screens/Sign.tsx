@@ -18,11 +18,18 @@ import {
   type SignResponseMessage,
   type TransactionSummary,
 } from '@netproof/core';
-import { buildMessageRequest, buildTransactionRequest, forwardToNode } from '@netproof/companion';
+import {
+  buildMessageRequest,
+  buildTransactionRequest,
+  forwardToNode,
+  nativeSymbol,
+} from '@netproof/companion';
 import type { PendingRequest } from '@netproof/companion';
 import { useCompanion } from '../App';
 import { useSurface } from '../surface';
 import { getPending, removePending } from '../lib/store';
+import { useFeeTiers } from '../lib/fees';
+import { FeeSelector } from '../ui/FeeSelector';
 import { useVisibleAccounts } from './Wallet';
 import {
   Alert,
@@ -78,8 +85,19 @@ export function SignScreen({ id }: { id: string }): ReactNode {
   const { wallet, settings, navigate, refresh, show, addActivity, addOrigin } = useCompanion();
   const { accounts } = useVisibleAccounts();
   const [state, setState] = useState<State>({ step: 'loading' });
+  /**
+   * True while the transaction is being rebuilt for a different fee.
+   *
+   * The QR is what the device scans, so a code still on screen from the previous price must
+   * not be scannable: it would produce a signed payload whose claim no longer matches the
+   * request, and the wallet would refuse it after the user had already approved it on the
+   * phone. So the code is taken away while the new one is built.
+   */
+  const [rebuilding, setRebuilding] = useState(false);
   const evmRequestRef = useRef<EvmTransactionRequest | null>(null);
   const collectorRef = useRef(new FrameCollector('NP-SIG'));
+  /** False until the request has been turned into a message once. */
+  const builtRef = useRef(false);
 
   const forward = useCallback(
     (method: string, params: unknown[]) =>
@@ -89,6 +107,24 @@ export function SignScreen({ id }: { id: string }): ReactNode {
       }),
     [settings.chainId, settings.rpcUrls],
   );
+  /*
+   * The same three tiers as the send form, for the transactions a site asks for.
+   *
+   * A dApp sends whatever price it likes; the user is the one who pays it, and a contract
+   * call is exactly where an inflated price hides — the amount being moved is often zero, so
+   * the fee is the whole cost. Choosing here also means the summary card below and the bytes
+   * the device signs are built from the same numbers.
+   */
+  const fee = useFeeTiers({ rpcUrl: settings.rpcUrls[settings.chainId], chainId: settings.chainId });
+  /**
+   * Whether the chain has answered yet, and which choice the user has made.
+   *
+   * The transaction is rebuilt when one of those changes, and *not* when the background poll
+   * finds a new price: a QR that vanishes every twenty seconds cannot be scanned, and the
+   * price that was signed is the one in the summary card on screen.
+   */
+  const feeReady = fee.fields !== null;
+  const feeChoice = fee.version;
 
   useEffect(() => {
     const request = getPending(id);
@@ -116,17 +152,35 @@ export function SignScreen({ id }: { id: string }): ReactNode {
       return;
     }
 
+    const isTransaction = request.kind === 'sendTransaction' || request.kind === 'signTransaction';
+    /*
+     * A transaction is not built until the chain has told us what gas costs. Building it with
+     * a fallback price would put the wallet's own guess in front of the user as if it were the
+     * market, and then the tiers offered next to it would not be what gets signed.
+     */
+    if (isTransaction && fee.fields === null) {
+      if (fee.feeError) {
+        const text = '无法读取当前网络费率，已阻止这次签名请求。请检查 RPC 设置后重试。';
+        removePending(id);
+        setState({ step: 'error', message: text });
+        resolve({ error: { code: -32603, message: text } });
+      }
+      return;
+    }
+
     let cancelled = false;
+    if (builtRef.current) setRebuilding(true);
     void (async () => {
       try {
         let message: SignRequestMessage;
-        if (request.kind === 'sendTransaction' || request.kind === 'signTransaction') {
+        if (isTransaction) {
           message = await buildTransactionRequest({
             wallet,
             settings,
             params: request.params,
             origin: request.origin,
             forward,
+            ...(fee.fields ? { fee: fee.fields } : {}),
           });
           evmRequestRef.current = toEvm(message);
         } else if (request.kind === 'personal_sign') {
@@ -151,15 +205,23 @@ export function SignScreen({ id }: { id: string }): ReactNode {
           message.kind === 'tx' && evmRequestRef.current
             ? describeTransaction(evmRequestRef.current)
             : null;
+        builtRef.current = true;
+        setRebuilding(false);
         setState({ step: 'outgoing', request, message, summary });
       } catch (caught) {
-        if (!cancelled) setState({ step: 'error', message: (caught as Error).message });
+        if (!cancelled) {
+          setRebuilding(false);
+          setState({ step: 'error', message: (caught as Error).message });
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [id, wallet, settings, forward]);
+    // Deliberately not `fee.fields`: that object is new on every poll, and comparing it would
+    // rebuild a code the user might be scanning. A new price is picked by tapping a tier.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, wallet, settings, forward, feeReady, feeChoice, fee.feeError, resolve]);
 
   /**
    * Verify and deliver. Every failure path removes the request and reports an
@@ -538,6 +600,23 @@ export function SignScreen({ id }: { id: string }): ReactNode {
           </div>
         ) : null}
 
+        {/*
+          A dApp can put any price in its request; this is where the user takes it back. A
+          contract call often moves nothing at all, so the fee is the entire cost of it.
+        */}
+        {message?.kind === 'tx' ? (
+          <FeeSelector
+            tiers={fee.tiers}
+            tierId={fee.tierId}
+            onSelect={fee.select}
+            gas={message.tx ? BigInt(message.tx.gas) : null}
+            load={fee.load}
+            feeError={fee.feeError}
+            unit={nativeSymbol(settings.chainId)}
+            pendingHint="正在读取这笔交易的 gas"
+          />
+        ) : null}
+
         {messageSummary ? (
           <div className="np-card">
             <div className="np-label">{messageSummary.title}</div>
@@ -557,7 +636,11 @@ export function SignScreen({ id }: { id: string }): ReactNode {
           </div>
         </div>
 
-        {frames.length > 0 ? (
+        {rebuilding ? (
+          <Alert tone="info" title="正在按新的手续费重建请求">
+            二维码暂时取下：价格变了，要签的交易也变了，旧的那张不能再扫。
+          </Alert>
+        ) : frames.length > 0 ? (
           <QrDisplay
             frames={frames}
             frameDurationMs={settings.qrFrameDurationMs}

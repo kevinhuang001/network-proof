@@ -281,8 +281,17 @@ export async function buildTransactionRequest(input: {
   params: unknown[];
   origin: string;
   forward: (method: string, params: unknown[]) => Promise<unknown>;
+  /**
+   * The fee the user chose, which overrides whatever the caller asked for.
+   *
+   * A dApp's own price is a wish, and one the wallet cannot check: it may be yesterday's
+   * number, or a number chosen to make a transaction look cheaper than it is. The three tiers
+   * come from the node's own view of the chain, and the user picks one. Passing this in is how
+   * a choice made on the approval screen reaches the bytes the device signs.
+   */
+  fee?: { gasPrice?: string; maxFeePerGas?: string; maxPriorityFeePerGas?: string };
 }): Promise<SignRequestMessage> {
-  const { wallet, settings, params, origin, forward } = input;
+  const { wallet, settings, params, origin, forward, fee } = input;
   const tx = params[0] as
     | {
         from?: string;
@@ -334,17 +343,24 @@ export async function buildTransactionRequest(input: {
           );
 
   let request: EvmTransactionRequest;
-  if (tx.gasPrice !== undefined) {
-    request = { type: 'legacy', chainId, nonce, to, value, data, gas, gasPrice: BigInt(tx.gasPrice) };
+  // A chosen legacy price wins; otherwise a chosen EIP-1559 pair wins; otherwise the caller's
+  // fields; otherwise the node. The chain's shape follows the choice, never the other way.
+  const gasPriceField = fee?.gasPrice ?? (fee === undefined ? tx.gasPrice : undefined);
+  if (gasPriceField !== undefined) {
+    request = { type: 'legacy', chainId, nonce, to, value, data, gas, gasPrice: BigInt(gasPriceField) };
   } else {
     const maxPriorityFeePerGas =
-      tx.maxPriorityFeePerGas !== undefined
-        ? BigInt(tx.maxPriorityFeePerGas)
-        : BigInt((await forward('eth_maxPriorityFeePerGas', [])) as string);
+      fee?.maxPriorityFeePerGas !== undefined
+        ? BigInt(fee.maxPriorityFeePerGas)
+        : tx.maxPriorityFeePerGas !== undefined
+          ? BigInt(tx.maxPriorityFeePerGas)
+          : BigInt((await forward('eth_maxPriorityFeePerGas', [])) as string);
     const maxFeePerGas =
-      tx.maxFeePerGas !== undefined
-        ? BigInt(tx.maxFeePerGas)
-        : BigInt((await forward('eth_gasPrice', [])) as string);
+      fee?.maxFeePerGas !== undefined
+        ? BigInt(fee.maxFeePerGas)
+        : tx.maxFeePerGas !== undefined
+          ? BigInt(tx.maxFeePerGas)
+          : BigInt((await forward('eth_gasPrice', [])) as string);
     request = {
       type: 'eip1559',
       chainId,
