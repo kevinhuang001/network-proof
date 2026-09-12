@@ -71,6 +71,21 @@ export function frameQuality(data: Uint8ClampedArray | Uint8Array): FrameQuality
   return { luma: sum / count, signature, spread: max - min };
 }
 
+/**
+ * RGBA to one byte per pixel.
+ *
+ * The finder-pattern search wants a grey image and does not care about colour; a QR code on a
+ * screen is black and white anyway. One pass, once every few hundred milliseconds.
+ */
+export function grayscale(data: Uint8ClampedArray | Uint8Array, pixels: number): Uint8Array {
+  const out = new Uint8Array(pixels);
+  for (let index = 0; index < pixels; index++) {
+    const at = index * 4;
+    out[index] = (data[at]! * 299 + data[at + 1]! * 587 + data[at + 2]! * 114) / 1000;
+  }
+  return out;
+}
+
 export type FrameVerdict = 'ok' | 'blank' | 'dark' | 'frozen';
 
 /** Below this mean brightness there is nothing to threshold. */

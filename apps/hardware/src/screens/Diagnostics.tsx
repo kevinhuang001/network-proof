@@ -56,6 +56,12 @@ function CameraCard(): ReactNode {
           {report.frames} / {report.decoded}
         </span>
       </div>
+      <div className="np-row np-row--between">
+        <span className="np-body">二维码每模块</span>
+        <span className="np-body np-num">
+          {report.estimate ? `${report.estimate.modulePx.toFixed(1)} 像素` : '没测到'}
+        </span>
+      </div>
     </div>
   );
 }

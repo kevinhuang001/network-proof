@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cameraInfo, pickRearCameraId } from '../src/lib/camera';
+import { cameraInfo, looksLikeFrontCamera, pickRearCameraId } from '../src/lib/camera';
 import { scanHint } from '../src/lib/scanner';
 import type { FrameCollectorProgress } from '@netproof/core';
 
@@ -27,6 +27,7 @@ describe('what the camera actually gave us', () => {
       frameRate: 30,
       label: 'camera2 0, facing back',
       facingMode: 'environment',
+      deviceId: null,
     });
     // A WebView that reports nothing is a zero, not an undefined that becomes "NaN×NaN" in
     // the one line meant to explain a blurry picture.
@@ -36,6 +37,7 @@ describe('what the camera actually gave us', () => {
       frameRate: null,
       label: 'camera2 0, facing back',
       facingMode: null,
+      deviceId: null,
     });
   });
 
@@ -54,6 +56,17 @@ describe('what the camera actually gave us', () => {
       ]),
     ).toBe('y');
     expect(pickRearCameraId([{ kind: 'videoinput', deviceId: 'z', label: '' }])).toBe('z');
+  });
+
+  it('knows a front camera when it sees one', () => {
+    // Not a quality judgement: a front camera's picture is mirrored, and a QR code is not
+    // symmetric under a mirror, so jsQR can never read one — at any resolution.
+    expect(looksLikeFrontCamera({ facingMode: 'user', label: '' })).toBe(true);
+    expect(looksLikeFrontCamera({ facingMode: 'environment', label: 'camera2 1, facing front' })).toBe(false);
+    expect(looksLikeFrontCamera({ facingMode: null, label: 'camera2 1, facing front' })).toBe(true);
+    expect(looksLikeFrontCamera({ facingMode: null, label: '前置摄像头' })).toBe(true);
+    // An unlabelled camera is not assumed to be the wrong one.
+    expect(looksLikeFrontCamera({ facingMode: null, label: '' })).toBe(false);
   });
 
   it('falls back to the only camera there is, and to nothing when there is none', () => {

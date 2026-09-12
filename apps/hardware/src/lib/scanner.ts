@@ -2,8 +2,10 @@ import jsQR from 'jsqr';
 import { FrameCollector } from '@netproof/core';
 import type { FrameCollectorProgress, FrameType } from '@netproof/core';
 import { attachStream, cameraInfo, requestCameraStream } from './camera';
-import { classifyQuality, frameQuality } from './frameQuality';
+import { classifyQuality, frameQuality, grayscale } from './frameQuality';
 import type { FrameQuality } from './frameQuality';
+import { estimateFinder, sizeAdvice } from './finderPattern';
+import type { FinderEstimate } from './finderPattern';
 import type { CameraInfo } from './camera';
 
 /**
@@ -56,6 +58,13 @@ export interface ScanStatus {
   phase: ScanPhase;
   /** What the camera gave us, once there is a stream. */
   info: CameraInfo | null;
+  /**
+   * How big the code in front of the camera is, when a finder pattern can be found at all.
+   *
+   * This is what turns 「还没扫到」 into advice: whether to move closer is decided by pixels per
+   * module, and nobody holding a phone can see that number.
+   */
+  estimate?: FinderEstimate | null;
 }
 
 /** What the last scan did, kept for the settings screen. */
@@ -66,6 +75,8 @@ export interface ScanReport {
   /** Frames sampled since the camera opened. */
   frames: number;
   decoded: number;
+  /** Measured size of the code in view, when one could be measured. */
+  estimate: FinderEstimate | null;
 }
 
 let lastReport: ScanReport | null = null;
@@ -85,8 +96,6 @@ export interface ScanOptions {
   video: HTMLVideoElement;
   expectedType?: FrameType;
   onStatus?: (status: ScanStatus) => void;
-  /** Sampling canvas size; larger costs CPU but resolves denser codes. */
-  scanSize?: number;
   /** Minimum gap between scans, in ms. */
   intervalMs?: number;
   /** Aborts a start that is still in flight, and releases the camera at once. */
@@ -105,7 +114,6 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
   const {
     video,
     expectedType,
-    scanSize = 480,
     intervalMs = 60,
     signal,
     onProgress,
@@ -121,12 +129,11 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
 
   const collector = new FrameCollector(expectedType);
   const canvas = document.createElement('canvas');
-  canvas.width = scanSize;
-  canvas.height = scanSize;
   const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('无法创建 2D 画布上下文');
-  // A QR code must be sampled without smoothing or the modules blur together.
-  context.imageSmoothingEnabled = false;
+  /** Only used to enlarge a crop that turned out to be too small to resolve. */
+  const enlarged = document.createElement('canvas');
+  const enlargedContext = enlarged.getContext('2d', { willReadFrequently: true });
 
   let running = true;
   let lastScanAt = 0;
@@ -140,13 +147,26 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
   let lastVerdict: ScanStatus['phase'] | null = null;
   let frames = 0;
   let decodedFrames = 0;
+  let lastFinderAt = 0;
+  let lastAdvice: string | null = null;
 
   /** Report a problem once, and never talk over the transfer once it is running. */
-  const report = (phase: ScanStatus['phase']): void => {
-    lastReport = { at: Date.now(), phase, info: cameraInfo(stream), frames, decoded: decodedFrames };
-    if (lastVerdict === phase) return;
+  const report = (phase: ScanStatus['phase'], estimate?: FinderEstimate | null): void => {
+    lastReport = {
+      at: Date.now(),
+      phase,
+      info: cameraInfo(stream),
+      frames,
+      decoded: decodedFrames,
+      estimate: estimate ?? null,
+    };
+    if (lastVerdict === phase && estimate === undefined) return;
     lastVerdict = phase;
-    onStatus?.({ phase, info: cameraInfo(stream) });
+    onStatus?.({
+      phase,
+      info: cameraInfo(stream),
+      ...(estimate === undefined ? {} : { estimate }),
+    });
   };
 
   const tick = (now: number): void => {
@@ -179,11 +199,26 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
         // the user is still holding the phone, not after they give up.
         report('searching');
       }
-      const crop = robust ? Math.min(side, DETAIL_CROP_MAX) : Math.min(scanSize, side);
+      /*
+       * Sample the middle square at the camera's own resolution.
+       *
+       * There used to be a "fast" mode that shrank this to 480 first, with smoothing off, on
+       * the theory that fewer pixels is cheaper. Two things were wrong with it. Shrinking a
+       * periodic image with nearest-neighbour sampling is not a smaller picture of a QR code,
+       * it is a moiré pattern — measured against a simulated camera, it failed on codes the
+       * smoothed path read. And the pixels it threw away are exactly the ones a phone camera
+       * has least of: at 480, a code filling the frame lands at four pixels per module, and
+       * four is where jsQR stops.
+       */
+      const crop = Math.min(side, DETAIL_CROP_MAX);
       if (canvas.width !== crop) {
         canvas.width = crop;
         canvas.height = crop;
       }
+      // Smoothing is the *correct* way to reduce an image, and must stay off at 1:1 where
+      // there is nothing to interpolate.
+      context.imageSmoothingEnabled = crop < side;
+      context.imageSmoothingQuality = 'high';
       context.drawImage(video, sx, sy, side, side, 0, 0, crop, crop);
       const image = context.getImageData(0, 0, crop, crop);
 
@@ -194,6 +229,23 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
        * silence from jsQR, and the user can only act on the first two if we name them.
        */
       frames += 1;
+      /*
+       * Measure the code while waiting for it.
+       *
+       * Every 400 ms, and only until something decodes: this is the sentence the user needs
+       * ("closer" or "not the distance"), and it is the difference between a screen that is
+       * silent and one that tells them which way to move.
+       */
+      if (!decodedAny && now - lastFinderAt > 400) {
+        lastFinderAt = now;
+        const estimate = estimateFinder(grayscale(image.data, crop * crop), crop, crop);
+        const advice = sizeAdvice(estimate);
+        if (advice !== lastAdvice) {
+          lastAdvice = advice;
+          report(elapsed > ROBUST_DECODE_AFTER_MS ? 'searching' : 'live', estimate);
+        }
+      }
+
       if (!decodedAny) {
         quality.push(frameQuality(image.data));
         if (quality.length > 24) quality.shift();
@@ -201,9 +253,31 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
         if (verdict === 'dark' || verdict === 'blank' || verdict === 'frozen') report(verdict);
       }
 
-      const result = jsQR(image.data, image.width, image.height, {
+      let result = jsQR(image.data, image.width, image.height, {
         inversionAttempts: robust ? 'attemptBoth' : 'dontInvert',
       });
+
+      /*
+       * Enlarge before giving up.
+       *
+       * jsQR's locating and thresholding both work in pixels, and a code under about three
+       * pixels per module is not found at any cost. Interpolation cannot invent detail, but it
+       * does give the binarizer the pixels it wants to see: against a simulated camera this
+       * rescued codes at 2.5 pixels per module that were unreadable as they stood.
+       *
+       * Only for small crops: enlarging a 1080-pixel square fourfold would cost seconds of
+       * decoding for a code that already had every pixel it needed.
+       */
+      if (!result && robust && crop * 2 <= DETAIL_CROP_MAX && enlargedContext) {
+        const target = crop * 2;
+        enlarged.width = target;
+        enlarged.height = target;
+        enlargedContext.imageSmoothingEnabled = true;
+        enlargedContext.imageSmoothingQuality = 'high';
+        enlargedContext.drawImage(canvas, 0, 0, crop, crop, 0, 0, target, target);
+        const bigger = enlargedContext.getImageData(0, 0, target, target);
+        result = jsQR(bigger.data, target, target, { inversionAttempts: 'attemptBoth' });
+      }
       if (!result || result.data.length === 0) return;
       decodedFrames += 1;
       decodedAny = true;
@@ -288,11 +362,14 @@ export function scanHint(input: {
     case 'opening':
       return '正在打开摄像头…';
     case 'live':
-      return '把二维码放进取景框';
+      return sizeAdvice(input.status?.estimate ?? null) ?? '把二维码放进取景框';
     case 'searching':
-      // The scanner has switched to full-resolution, polarity-agnostic decoding by now, so the
-      // advice is about the only variables left in the user's hands.
-      return '还没扫到：两个屏幕靠近些、调高插件端亮度、拿稳';
+      // Measured when possible: whether to move closer is a fact about pixels per module, and
+      // the person holding the phone has no way to see it.
+      return (
+        sizeAdvice(input.status?.estimate ?? null) ??
+        '还没扫到：把两个屏幕靠近些、调高插件端亮度、拿稳'
+      );
     case 'no-signal':
       return '摄像头打开了，但没有画面——退出这一步重进，或重启手机';
     case 'dark':

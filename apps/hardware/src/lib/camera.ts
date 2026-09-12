@@ -109,12 +109,18 @@ export async function attachStream(
  * code that lands on a few pixels per module is a code that never decodes. Measuring it is
  * the only way to tell a soft preview from a camera that is doing its best.
  */
+/** `getSettings()` with the field we care about that lib.dom does not always declare. */
+interface MediaDeviceSettings extends MediaTrackSettings {
+  deviceId?: string;
+}
+
 export interface CameraInfo {
   width: number;
   height: number;
   frameRate: number | null;
   label: string;
   facingMode: string | null;
+  deviceId: string | null;
 }
 
 /** Below this width the preview is visibly soft and a code has to fill the frame. */
@@ -132,6 +138,7 @@ export function cameraInfo(stream: MediaStream): CameraInfo {
     frameRate: typeof settings.frameRate === 'number' ? settings.frameRate : null,
     label: track?.label ?? '',
     facingMode: typeof settings.facingMode === 'string' ? settings.facingMode : null,
+    deviceId: typeof settings.deviceId === 'string' ? settings.deviceId : null,
   };
 }
 
@@ -142,6 +149,20 @@ export function cameraInfo(stream: MediaStream): CameraInfo {
  * `label` says which way it faces (`camera2 0, facing back` on Android), and the front one is
  * never the one to scan a code with.
  */
+/**
+ * Whether this is a camera pointing the wrong way.
+ *
+ * A front camera is not merely lower quality, it is *mirrored*: the preview and the frames are
+ * flipped horizontally, and a QR code is not symmetric under that flip. jsQR will never decode
+ * one, at any resolution, and nothing in the picture says why. `facingMode` is the browser's own
+ * answer and the label is the fallback, because some WebViews report neither.
+ */
+export function looksLikeFrontCamera(info: Pick<CameraInfo, 'facingMode' | 'label'>): boolean {
+  if (info.facingMode === 'user') return true;
+  if (info.facingMode === 'environment') return false;
+  return /front|user|前置/i.test(info.label);
+}
+
 export function pickRearCameraId(devices: Pick<MediaDeviceInfo, 'kind' | 'deviceId' | 'label'>[]): string | null {
   const cameras = devices.filter((device) => device.kind === 'videoinput');
   if (cameras.length === 0) return null;
@@ -202,8 +223,42 @@ export async function requestCameraStream(): Promise<MediaStream> {
   }
 
   let stream = await openCamera(videoConstraints());
-  if (cameraInfo(stream).width >= SHARP_WIDTH) return stream;
+  let info = cameraInfo(stream);
 
+  /*
+   * A front camera first, because a mirrored code can never be read.
+   *
+   * This is checked before resolution: an eight-megapixel selfie camera is sharper than a
+   * two-megapixel rear one and completely useless here, and 「扫不到」 with a crisp picture is
+   * exactly what that looks like.
+   */
+  if (looksLikeFrontCamera(info) || info.width < SHARP_WIDTH) {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const deviceId = pickRearCameraId(devices);
+      if (deviceId !== null && deviceId !== currentDeviceId(stream)) {
+        const better = await openCamera(videoConstraints({ deviceId: { exact: deviceId } }));
+        const betterInfo = cameraInfo(better);
+        // Prefer it unless it is *also* a front camera pointing at nothing.
+        if (!looksLikeFrontCamera(betterInfo)) {
+          stopStream(stream);
+          stream = better;
+          info = betterInfo;
+        } else {
+          // Do not leave a second stream open on a device whose whole premise is that the
+          // camera is not quietly doing things.
+          stopStream(better);
+        }
+      }
+    } catch {
+      // Keep what we have; the caller reports what it is.
+    }
+  }
+
+  if (info.width >= SHARP_WIDTH && !looksLikeFrontCamera(info)) return stream;
+
+  // Still small: ask the same track to switch to a sharper capture mode. No new permission
+  // prompt, and it happens before the preview is attached, so nothing flashes.
   const track = stream.getVideoTracks()[0];
   if (track) {
     try {
@@ -211,32 +266,18 @@ export async function requestCameraStream(): Promise<MediaStream> {
         width: { ideal: TARGET_WIDTH },
         height: { ideal: TARGET_HEIGHT },
       });
-      if (cameraInfo(stream).width >= SHARP_WIDTH) return stream;
     } catch {
-      // Not supported on this WebView; the next step is the one that matters.
+      // Not supported on this WebView. Whatever we have is what we have.
     }
-  }
-
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const deviceId = pickRearCameraId(devices);
-    if (deviceId !== null) {
-      const better = await openCamera(videoConstraints({ deviceId: { exact: deviceId } }));
-      if (cameraInfo(better).width > cameraInfo(stream).width) {
-        stopStream(stream);
-        stream = better;
-      } else {
-        // The named camera is not better than what we already have — usually because it is
-        // the same one. Do not leave a second stream open on a device that is meant to be
-        // doing one thing at a time.
-        stopStream(better);
-      }
-    }
-  } catch {
-    // Keep what we have.
   }
 
   return stream;
+}
+
+/** The device id a live stream is using, so we do not "switch" to the camera we already have. */
+function currentDeviceId(stream: MediaStream): string | null {
+  const settings = (stream.getVideoTracks()[0]?.getSettings?.() ?? {}) as MediaDeviceSettings;
+  return settings.deviceId ?? null;
 }
 
 export async function startEntropyCapture(options: CaptureOptions): Promise<CaptureHandle> {

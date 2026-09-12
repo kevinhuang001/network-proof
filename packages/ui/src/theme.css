@@ -958,6 +958,32 @@ body {
   image-rendering: pixelated;
 }
 
+/*
+ * A transfer code gets to be bigger than the phone-width column.
+ *
+ * Every pixel of a QR code on this screen is a pixel the other device's camera has to resolve,
+ * and the layout is phone-sized even on a desktop. A code that fills 520 pixels instead of 305
+ * is 1.7× the modules across, which is 2.9× the area per module as far as that camera is
+ * concerned — and the phone holds the same distance from the screen either way.
+ *
+ * Only for a real desktop-class pointer: in the extension's 360-pixel popup, and on a phone,
+ * the stage keeps filling what it has. `transform` rather than a negative margin, so the
+ * centring does not depend on the column width.
+ */
+@media (min-width: 520px) and (hover: hover) and (pointer: fine) {
+  .np-qr-stage--large {
+    position: relative;
+    left: 50%;
+    width: 520px;
+    max-width: none;
+    transform: translateX(-50%);
+  }
+}
+
+.np-qr-stage--large canvas {
+  max-width: 100%;
+}
+
 .np-qr-caption {
   text-align: center;
   font-size: 13px;
