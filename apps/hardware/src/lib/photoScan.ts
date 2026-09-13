@@ -1,4 +1,6 @@
 import jsQR from 'jsqr';
+import QRCode from 'qrcode';
+import { qr as qrTokens } from '@netproof/ui';
 import { estimateFinder } from './finderPattern';
 
 /**
@@ -105,18 +107,59 @@ function previewOf(canvas: HTMLCanvasElement, max = 420): string | null {
   }
 }
 
+/**
+ * Get the photograph into something drawable.
+ *
+ * `createImageBitmap` is the quick way and the one that fails first: an old WebView cannot always
+ * decode a large JPEG, and some Android cameras hand back HEIC, which it cannot decode at all. An
+ * `<img>` element goes through the platform's own image pipeline instead — the same one that shows
+ * photographs in the gallery — so it is the fallback, and between them there is very little that
+ * cannot be opened.
+ */
+async function loadImage(blob: Blob): Promise<{ source: CanvasImageSource; width: number; height: number; how: string }> {
+  try {
+    const bitmap = await createImageBitmap(blob);
+    return { source: bitmap, width: bitmap.width, height: bitmap.height, how: 'createImageBitmap' };
+  } catch (bitmapError) {
+    const url = URL.createObjectURL(blob);
+    try {
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const element = new Image();
+        element.onload = () => resolve(element);
+        element.onerror = () => reject(new Error('图片解码失败'));
+        element.src = url;
+      });
+      return { source: image, width: image.naturalWidth, height: image.naturalHeight, how: 'img' };
+    } catch (imageError) {
+      throw new Error(
+        `${(bitmapError as Error).message}；换用 img 也不行：${(imageError as Error).message}`,
+      );
+    } finally {
+      // The element has decoded by now; revoking is safe and the object URL is memory.
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    }
+  }
+}
+
 /** Decode a photograph. Never throws for "no code here" — that is a result, not an error. */
 export async function scanPhoto(blob: Blob): Promise<PhotoScanResult> {
   const attempts: PhotoAttempt[] = [];
-  const bitmap = await createImageBitmap(blob);
-  const size = { width: bitmap.width, height: bitmap.height };
+  const loaded = await loadImage(blob);
+  const bitmap = loaded.source;
+  const size = { width: loaded.width, height: loaded.height };
+  attempts.push({
+    name: `打开照片（${loaded.how}）`,
+    width: loaded.width,
+    height: loaded.height,
+    decoded: true,
+  });
 
   try {
     // Pass 1: the whole photograph, reduced.
-    const scale = Math.min(1, OVERVIEW_MAX / Math.max(bitmap.width, bitmap.height));
+    const scale = Math.min(1, OVERVIEW_MAX / Math.max(size.width, size.height));
     const overview = canvasOf(
-      Math.max(1, Math.round(bitmap.width * scale)),
-      Math.max(1, Math.round(bitmap.height * scale)),
+      Math.max(1, Math.round(size.width * scale)),
+      Math.max(1, Math.round(size.height * scale)),
     );
     overview.context.imageSmoothingEnabled = scale < 1;
     overview.context.imageSmoothingQuality = 'high';
@@ -184,6 +227,79 @@ export async function scanPhoto(blob: Blob): Promise<PhotoScanResult> {
   } finally {
     // A 12-megapixel bitmap is tens of megabytes; a phone that keeps several is a phone that
     // reloads the page.
-    bitmap.close?.();
+    (bitmap as ImageBitmap).close?.();
+  }
+}
+
+/**
+ * Is the decoder itself working, on this phone, in this WebView?
+ *
+ * Written to answer a question I could not answer from here: 「是不是你的二维码识别有问题啊」. The
+ * camera, the photograph, the file picker and the WebView are all suspects, and every one of them
+ * is outside my reach — but the decode path is not. So the device builds a QR code itself, turns it
+ * into a JPEG the way a photograph would arrive, and reads it back through exactly the code that
+ * reads photographs.
+ *
+ * If this fails, the fault is mine and the screen says so. If it passes, the decoder is fine and
+ * the photograph is the thing to look at — which is a different conversation, and a much shorter
+ * one.
+ */
+export interface SelfTestResult {
+  ok: boolean;
+  /** Every step, for the screen, so a failure says where it failed rather than just "failed". */
+  steps: { name: string; ok: boolean; detail: string }[];
+}
+
+export async function decoderSelfTest(): Promise<SelfTestResult> {
+  const steps: SelfTestResult['steps'] = [];
+  const payload = `NP1:NP-REQ:0-1:${'AB7C9D2E5F8G4H6J0K1LM3N4P5Q6R7S8T'.repeat(10)}`;
+
+  let blob: Blob | null = null;
+  try {
+    const created = QRCode.create(payload, { errorCorrectionLevel: qrTokens.errorCorrectionLevel });
+    const size = created.modules.size;
+    const quiet = qrTokens.quietZoneModules;
+    const modulePx = 10;
+    const side = (size + quiet * 2) * modulePx;
+    const { canvas, context } = canvasOf(side, side);
+    context.fillStyle = '#FFFFFF';
+    context.fillRect(0, 0, side, side);
+    context.fillStyle = '#0B0B0F';
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        if (!created.modules.data[y * size + x]) continue;
+        context.fillRect((quiet + x) * modulePx, (quiet + y) * modulePx, modulePx, modulePx);
+      }
+    }
+    steps.push({ name: '生成二维码', ok: true, detail: `${size} 模块，${side}×${side} 像素` });
+
+    blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.7));
+    steps.push({
+      name: '转成 JPEG（模拟照片）',
+      ok: blob !== null,
+      detail: blob ? `${Math.round(blob.size / 1024)} KB` : 'toBlob 返回空',
+    });
+    if (!blob) return { ok: false, steps };
+  } catch (error) {
+    steps.push({ name: '生成二维码', ok: false, detail: (error as Error).message });
+    return { ok: false, steps };
+  }
+
+  try {
+    const result = await scanPhoto(blob);
+    const matched = result.text === payload;
+    steps.push({
+      name: '读回这张 JPEG',
+      ok: matched,
+      detail: matched
+        ? `成功，${result.attempts.map((attempt) => attempt.name).join(' → ')}`
+        : result.text === null
+          ? `没有读出内容（${result.attempts.map((attempt) => `${attempt.name}:${attempt.width}×${attempt.height} ${attempt.decoded ? '✓' : '✗'}`).join('，')}）`
+          : '读出的内容与写入的不一致',
+    });
+    return { ok: matched, steps };
+  } catch (error) {
+    steps.push({ name: '读回这张 JPEG', ok: false, detail: `抛错：${(error as Error).message}` });
+    return { ok: false, steps };
   }
 }
