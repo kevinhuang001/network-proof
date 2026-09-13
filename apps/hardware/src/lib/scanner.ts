@@ -274,12 +274,7 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
       sharpness: lastSharpness,
       codeSharpness: lastCodeSharpness,
       sampleSize: lastSampleSize,
-      codeSize: lastEstimate
-        ? {
-            width: lastEstimate.region.right - lastEstimate.region.left,
-            height: lastEstimate.region.bottom - lastEstimate.region.top,
-          }
-        : null,
+      codeSize: codeBox(lastEstimate),
     };
     if (lastVerdict === phase && estimate === undefined) return;
     lastVerdict = phase;
@@ -290,12 +285,7 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
       sharpness: lastSharpness,
       codeSharpness: lastCodeSharpness,
       sampleSize: lastSampleSize,
-      codeSize: lastEstimate
-        ? {
-            width: lastEstimate.region.right - lastEstimate.region.left,
-            height: lastEstimate.region.bottom - lastEstimate.region.top,
-          }
-        : null,
+      codeSize: codeBox(lastEstimate),
       sample,
       ...(estimate === undefined ? {} : { estimate }),
     });
@@ -357,30 +347,42 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
          * whether the modules are clean; the second shows whether the code is in the picture at
          * all, which is the question when nothing has been located.
          */
-        const region = lastEstimate?.region;
-        const cropW = region ? region.right - region.left : sampleWidth;
-        const cropH = region ? region.bottom - region.top : sampleHeight;
         /*
-         * 1:1 whenever it fits, so what is on screen is what the decoder got. Scaling only when
-         * the crop is larger than the card can show, and then by an integer-free ratio with
-         * smoothing, which is the honest way to show a smaller copy of a picture.
+         * The whole frame, the same framing the preview shows.
+         *
+         * It used to be cropped to the code the app thought it had found, which was reported —
+         * correctly — as 「实际拍到的只是预览框里的一角」: a false detection in a corner became the
+         * picture the user was asked to judge. Now the picture is the frame, and if a code has been
+         * located it is *outlined* rather than cropped to, so what the app believes is visible
+         * instead of being applied silently.
          */
-        const fit = Math.min(1, SAMPLE_MAX / Math.max(cropW, cropH, 1));
-        preview.width = Math.max(1, Math.round(cropW * fit));
-        preview.height = Math.max(1, Math.round(cropH * fit));
+        const fit = Math.min(1, SAMPLE_MAX / Math.max(sampleWidth, sampleHeight, 1));
+        preview.width = Math.max(1, Math.round(sampleWidth * fit));
+        preview.height = Math.max(1, Math.round(sampleHeight * fit));
         previewContext.imageSmoothingEnabled = fit < 1;
         previewContext.imageSmoothingQuality = 'high';
         previewContext.drawImage(
           canvas,
-          region ? region.left : 0,
-          region ? region.top : 0,
-          cropW,
-          cropH,
+          0,
+          0,
+          sampleWidth,
+          sampleHeight,
           0,
           0,
           preview.width,
           preview.height,
         );
+        const region = lastEstimate?.region ?? null;
+        if (region) {
+          previewContext.strokeStyle = '#0ECB81';
+          previewContext.lineWidth = Math.max(2, Math.round(preview.width / 160));
+          previewContext.strokeRect(
+            region.left * fit,
+            region.top * fit,
+            (region.right - region.left) * fit,
+            (region.bottom - region.top) * fit,
+          );
+        }
         try {
           // Lossless: a JPEG artefact would be indistinguishable from a soft lens.
           sample = preview.toDataURL('image/png');
@@ -408,7 +410,9 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
          * Reporting the first number as "sharpness" was reporting the weather in another city.
          */
         lastCodeSharpness =
-          estimate === null ? null : sharpness(gray, sampleWidth, sampleHeight, estimate.region);
+          estimate?.region == null
+            ? null
+            : sharpness(gray, sampleWidth, sampleHeight, estimate.region);
         /*
          * Focus before distance. A picture too soft to hold a code is one that no advice about
          * distance can help, and "the size is fine" would send the user looking in the wrong place
@@ -530,6 +534,15 @@ export async function decodeImageFile(file: File, scanSize = 640): Promise<strin
   const image = context.getImageData(0, 0, scanSize, scanSize);
   const result = jsQR(image.data, image.width, image.height, { inversionAttempts: 'attemptBoth' });
   return result?.data ?? null;
+}
+
+/** The located code's box in the sampled pixels, or null when nothing was located. */
+function codeBox(estimate: FinderEstimate | null): { width: number; height: number } | null {
+  if (estimate?.region == null) return null;
+  return {
+    width: estimate.region.right - estimate.region.left,
+    height: estimate.region.bottom - estimate.region.top,
+  };
 }
 
 /**

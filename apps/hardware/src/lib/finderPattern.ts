@@ -26,7 +26,8 @@ export interface FinderEstimate {
    * The code's own extent, padded: where to look when measuring how sharp it is, and where to
    * point the user when telling them what the camera can see.
    */
-  region: { left: number; top: number; right: number; bottom: number };
+  /** Where the code is, when the patterns are arranged like a code. Null when they are not. */
+  region: { left: number; top: number; right: number; bottom: number } | null;
 }
 
 /** 1:1:3:1:1 across seven modules. */
@@ -143,6 +144,52 @@ function verticalTotal(
 }
 
 /**
+ * Do these patterns sit on a QR code?
+ *
+ * Three finder patterns sit at three corners of a square — an isosceles right triangle, the right
+ * angle at the corner of the code that has no pattern. Requiring that shape is what stops the
+ * detector from believing a plausible-looking run of pixels somewhere in the room, which is not a
+ * hypothetical: the app cropped a snapshot to a false detection in the corner of the frame and
+ * showed it to a user as "what the camera sees", and the user very reasonably said that what it
+ * showed was a corner of the picture.
+ *
+ * Two patterns are accepted when they are far enough apart to be a code's own width: on a small
+ * or soft frame the third is often missed, and refusing to measure at all would be worse.
+ */
+export function looksLikeCodeGeometry(
+  centres: { x: number; y: number }[],
+  modulePx: number,
+): boolean {
+  const distance = (a: { x: number; y: number }, b: { x: number; y: number }): number =>
+    Math.hypot(a.x - b.x, a.y - b.y);
+
+  if (centres.length < 2) return false;
+  if (centres.length === 2) {
+    // A code is at least twenty modules across, and the patterns are at opposite corners of it.
+    return distance(centres[0]!, centres[1]!) >= modulePx * 12;
+  }
+
+  for (const [cornerIndex, firstIndex, secondIndex] of [
+    [0, 1, 2],
+    [1, 0, 2],
+    [2, 0, 1],
+  ] as const) {
+    const corner = centres[cornerIndex]!;
+    const first = centres[firstIndex]!;
+    const second = centres[secondIndex]!;
+    const legA = distance(corner, first);
+    const legB = distance(corner, second);
+    const hypotenuse = distance(first, second);
+    if (legA < modulePx * 8 || legB < modulePx * 8) continue;
+    const equalLegs = Math.abs(legA - legB) <= 0.3 * Math.max(legA, legB);
+    const squareCorner =
+      Math.abs(hypotenuse * hypotenuse - (legA * legA + legB * legB)) <= 0.35 * (legA * legA + legB * legB);
+    if (equalLegs && squareCorner) return true;
+  }
+  return false;
+}
+
+/**
  * Find the code's module size, or nothing.
  *
  * Rows are scanned rather than every pixel, a horizontal match only counts when the rows below
@@ -250,7 +297,25 @@ export function estimateFinder(
   if (estimates.length === 0) return null;
   estimates.sort((a, b) => a.modulePx - b.modulePx);
   const best = estimates[0]!;
-  return { count: estimates.length, modulePx: best.modulePx, at: best.at, region: best.region };
+
+  /*
+   * Measure, but do not point, unless the patterns are arranged like a code.
+   *
+   * The module size is still useful on its own — a rough reading beats none — but the *region* is
+   * used to crop what the app shows the user and to decide advice, and a wrong region is worse
+   * than no region: it drew a box around a corner of the frame and called it the code.
+   */
+  const centres = groups
+    .filter((group) => group.length >= 2)
+    .map((group) => ({ x: group[0]!.x, y: group[0]!.y }));
+  const arranged = looksLikeCodeGeometry(centres, best.modulePx);
+
+  return {
+    count: estimates.length,
+    modulePx: best.modulePx,
+    at: best.at,
+    region: arranged ? best.region : null,
+  };
 }
 
 /**

@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import QRCode from 'qrcode';
 import { autoFramesForMessage, buildSignRequestMessage } from '@netproof/core';
-import { READABLE_MODULE_PX, estimateFinder, matchesFinderRatio, otsuThreshold, sizeAdvice } from '../src/lib/finderPattern';
+import {
+  READABLE_MODULE_PX,
+  estimateFinder,
+  looksLikeCodeGeometry,
+  matchesFinderRatio,
+  otsuThreshold,
+  sizeAdvice,
+} from '../src/lib/finderPattern';
 import { CODE_SHARP_ENOUGH, adviceFor } from '../src/lib/scanner';
 
 /**
@@ -164,5 +171,42 @@ describe('what the advice is allowed to claim', () => {
   it('uses the calibrated threshold, not a round number', () => {
     // Measured on a simulated 1080×1920 frame: a clean code measures 28-43 over its own region.
     expect(CODE_SHARP_ENOUGH).toBe(20);
+  });
+});
+
+describe('believing a detection', () => {
+  /*
+   * The bug: the app cropped the picture it showed the user down to the code it *thought* it had
+   * found, and the finding was a false positive in the corner of the frame. The user's report —
+   * 「实际拍到的只是预览框里的一角」 — was exactly right, and it was the app's own belief being
+   * applied silently rather than shown.
+   *
+   * A QR code's three finder patterns sit at three corners of a square. Checking that shape is
+   * what separates a code from three plausible runs of pixels.
+   */
+  const at = (x: number, y: number) => ({ x, y });
+
+  it('accepts the arrangement a code has', () => {
+    // The classic layout: patterns at top-left, top-right and bottom-left of a square.
+    expect(looksLikeCodeGeometry([at(0, 0), at(400, 0), at(0, 400)], 8)).toBe(true);
+    // Order does not matter: the right angle is wherever the corner is.
+    expect(looksLikeCodeGeometry([at(400, 0), at(0, 0), at(0, 400)], 8)).toBe(true);
+  });
+
+  it('rejects patterns that are not arranged like one', () => {
+    // Three in a line: three real finder patterns are never collinear.
+    expect(looksLikeCodeGeometry([at(0, 0), at(200, 0), at(400, 0)], 8)).toBe(false);
+    // A scalene triangle: the legs of a code's corner are equal.
+    expect(looksLikeCodeGeometry([at(0, 0), at(400, 0), at(0, 120)], 8)).toBe(false);
+    // One pattern is not a code, however convincing it looks.
+    expect(looksLikeCodeGeometry([at(300, 900)], 8)).toBe(false);
+  });
+
+  it('accepts two patterns when they are a code apart', () => {
+    // On a small or soft frame the third is often missed; refusing to measure would be worse.
+    // Twelve modules apart at least: 8 px per module means the patterns are 96 px apart or more.
+    expect(looksLikeCodeGeometry([at(0, 0), at(120, 0)], 8)).toBe(true);
+    // Two runs next to each other are not two corners of anything.
+    expect(looksLikeCodeGeometry([at(0, 0), at(30, 0)], 8)).toBe(false);
   });
 });

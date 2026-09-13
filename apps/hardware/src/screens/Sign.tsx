@@ -150,18 +150,17 @@ export function ScanRequestScreen({
             <img src={status.sample} alt="摄像头取样" className="np-sample" />
             <div className="np-body np-body--tight np-ink-3" style={{ marginTop: 8 }}>
               {/*
-                Said plainly, because the difference between this picture and the preview above it
-                is the whole question, and they are drawn at different scales: the preview is the
-                browser's smoothed copy of the same frames.
+                Said plainly, because the question being asked of this picture is whether it matches
+                the preview above it — same framing, same frames — and because the app's own belief
+                about where the code is has to be visible rather than applied silently.
               */}
-              {`这是解码器拿到的那张图，按原像素截取${
-                status.codeSharpness === null || status.codeSharpness === undefined
-                  ? ''
-                  : `，码区域清晰度 ${status.codeSharpness.toFixed(0)}`
-              }。`}
-              {status.codeSharpness !== null && status.codeSharpness !== undefined && status.codeSharpness < 20
-                ? '数字低于 20，说明这张图本身是糊的：擦镜头、拿稳，或者换个距离。'
-                : '如果它比上面预览更糊，那是摄像头交给网页的画面比预览差——请把这屏拍下来。'}
+              {'这是解码器拿到的整帧画面（和上面预览同一帧，浏览器缩放到卡片宽度）。'}
+              {status.codeSize
+                ? `绿框是识别到的二维码位置：${status.codeSize.width}×${status.codeSize.height} 像素。`
+                : '还没有在画面里找到二维码的方块，所以没有绿框。'}
+              {status.codeSharpness === null || status.codeSharpness === undefined
+                ? ''
+                : `码区域清晰度 ${status.codeSharpness.toFixed(0)}（低于 20 说明这张图本身是糊的）。`}
             </div>
           </div>
         ) : null}
