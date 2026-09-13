@@ -41,8 +41,16 @@ const NO_SIGNAL_AFTER_MS = 3000;
  */
 const SAMPLE_AFTER_MS = 5000;
 
-/** The snapshot is a thumbnail: it is displayed by the phone that is doing the decoding. */
-const SAMPLE_SIDE = 240;
+/**
+ * How wide the snapshot may be displayed.
+ *
+ * It was 240 pixels of a 1080×1920 frame — a 4.5× reduction — and it was JPEG. The result was a
+ * picture that looked like mush whatever the camera delivered, which cost a round of debugging:
+ * 「为什么预览框里这么清楚，识别出来的这么模糊呢」 was a question about *my thumbnail*, not about
+ * the frame. It is now captured at the resolution the decoder actually uses, cropped to the code
+ * when one has been located, and encoded losslessly — so when it looks soft, the frame is soft.
+ */
+const SAMPLE_MAX = 420;
 
 /**
  * Which pixels of a camera frame to hand the decoder.
@@ -117,6 +125,10 @@ export interface ScanStatus {
    * without that distinction is a number nobody can act on.
    */
   codeSharpness?: number | null;
+  /** Pixels handed to the decoder, for the diagnostics screen. */
+  sampleSize?: { width: number; height: number };
+  /** The located code's box inside those pixels. */
+  codeSize?: { width: number; height: number } | null;
   /**
    * A picture of the exact crop that was handed to the decoder.
    *
@@ -158,6 +170,10 @@ export interface ScanReport {
   sharpness: number;
   /** The same, restricted to the located code, or null when no code was located. */
   codeSharpness: number | null;
+  /** Pixels handed to the decoder. */
+  sampleSize: { width: number; height: number };
+  /** The located code's box inside those pixels. */
+  codeSize: { width: number; height: number } | null;
 }
 
 let lastReport: ScanReport | null = null;
@@ -237,6 +253,7 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
   let lastSharpness = 0;
   let lastCodeSharpness: number | null = null;
   let lastEstimate: FinderEstimate | null = null;
+  let lastSampleSize = { width: 0, height: 0 };
   let lastSampleAt = 0;
 
   /** Report a problem once, and never talk over the transfer once it is running. */
@@ -256,6 +273,13 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
       estimate: estimate ?? null,
       sharpness: lastSharpness,
       codeSharpness: lastCodeSharpness,
+      sampleSize: lastSampleSize,
+      codeSize: lastEstimate
+        ? {
+            width: lastEstimate.region.right - lastEstimate.region.left,
+            height: lastEstimate.region.bottom - lastEstimate.region.top,
+          }
+        : null,
     };
     if (lastVerdict === phase && estimate === undefined) return;
     lastVerdict = phase;
@@ -265,6 +289,13 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
       advice,
       sharpness: lastSharpness,
       codeSharpness: lastCodeSharpness,
+      sampleSize: lastSampleSize,
+      codeSize: lastEstimate
+        ? {
+            width: lastEstimate.region.right - lastEstimate.region.left,
+            height: lastEstimate.region.bottom - lastEstimate.region.top,
+          }
+        : null,
       sample,
       ...(estimate === undefined ? {} : { estimate }),
     });
@@ -303,6 +334,7 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
       context.imageSmoothingQuality = 'high';
       context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight, 0, 0, sampleWidth, sampleHeight);
       const image = context.getImageData(0, 0, sampleWidth, sampleHeight);
+      lastSampleSize = { width: sampleWidth, height: sampleHeight };
 
       const elapsed = Date.now() - openedAt;
       const robust = !decodedAny && elapsed > ROBUST_DECODE_AFTER_MS;
@@ -328,11 +360,16 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
         const region = lastEstimate?.region;
         const cropW = region ? region.right - region.left : sampleWidth;
         const cropH = region ? region.bottom - region.top : sampleHeight;
-        const box = Math.max(cropW, cropH, 1);
-        const side = SAMPLE_SIDE;
-        preview.width = region ? Math.round((cropW / box) * side) : side;
-        preview.height = region ? Math.round((cropH / box) * side) : side;
-        previewContext.imageSmoothingEnabled = true;
+        /*
+         * 1:1 whenever it fits, so what is on screen is what the decoder got. Scaling only when
+         * the crop is larger than the card can show, and then by an integer-free ratio with
+         * smoothing, which is the honest way to show a smaller copy of a picture.
+         */
+        const fit = Math.min(1, SAMPLE_MAX / Math.max(cropW, cropH, 1));
+        preview.width = Math.max(1, Math.round(cropW * fit));
+        preview.height = Math.max(1, Math.round(cropH * fit));
+        previewContext.imageSmoothingEnabled = fit < 1;
+        previewContext.imageSmoothingQuality = 'high';
         previewContext.drawImage(
           canvas,
           region ? region.left : 0,
@@ -345,7 +382,8 @@ export async function startQrScan(options: ScanOptions): Promise<ScanHandle> {
           preview.height,
         );
         try {
-          sample = preview.toDataURL('image/jpeg', 0.6);
+          // Lossless: a JPEG artefact would be indistinguishable from a soft lens.
+          sample = preview.toDataURL('image/png');
         } catch {
           sample = null;
         }

@@ -74,6 +74,13 @@ function CameraCard(): ReactNode {
         </span>
       </div>
       <div className="np-row np-row--between">
+        <span className="np-body">解码输入 / 码区域</span>
+        <span className="np-body np-num">
+          {`${report.sampleSize.width}×${report.sampleSize.height}`}
+          {report.codeSize ? ` / ${report.codeSize.width}×${report.codeSize.height}` : ' / 未找到'}
+        </span>
+      </div>
+      <div className="np-row np-row--between">
         <span className="np-body">清晰度（码区域 / 整帧）</span>
         <span className="np-body np-num">
           {report.codeSharpness === null ? '—' : report.codeSharpness.toFixed(0)} /{' '}

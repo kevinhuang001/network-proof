@@ -149,10 +149,19 @@ export function ScanRequestScreen({
             <div className="np-label">摄像头实际拍到的画面</div>
             <img src={status.sample} alt="摄像头取样" className="np-sample" />
             <div className="np-body np-body--tight np-ink-3" style={{ marginTop: 8 }}>
-              {`这就是喂给识别的那张图${status.sharpness === undefined ? '' : `（清晰度 ${status.sharpness.toFixed(0)}）`}。`}
-              {status.sharpness !== undefined && status.sharpness < 14
-                ? '数字偏低，说明对焦没对准：擦一下镜头，或换个距离。'
-                : '如果这张图和屏幕上看到的不一样，问题就在摄像头或取景位置上。'}
+              {/*
+                Said plainly, because the difference between this picture and the preview above it
+                is the whole question, and they are drawn at different scales: the preview is the
+                browser's smoothed copy of the same frames.
+              */}
+              {`这是解码器拿到的那张图，按原像素截取${
+                status.codeSharpness === null || status.codeSharpness === undefined
+                  ? ''
+                  : `，码区域清晰度 ${status.codeSharpness.toFixed(0)}`
+              }。`}
+              {status.codeSharpness !== null && status.codeSharpness !== undefined && status.codeSharpness < 20
+                ? '数字低于 20，说明这张图本身是糊的：擦镜头、拿稳，或者换个距离。'
+                : '如果它比上面预览更糊，那是摄像头交给网页的画面比预览差——请把这屏拍下来。'}
             </div>
           </div>
         ) : null}
