@@ -4,6 +4,7 @@ import {
   buildXpubMessage,
   deriveSolanaKeypair,
   autoFramesForMessage,
+  singleFrameForMessage,
   mnemonicToSeed,
   solanaAccountPaths,
 } from '@netproof/core';
@@ -409,7 +410,12 @@ export function LoginQrScreen({ onBack }: { onBack: () => void }): ReactNode {
       },
       deviceInfo,
     );
-    return autoFramesForMessage('NP-XPUB', message, scanSpeed.preset.fragmentLength).frames;
+    // One photograph-sized code rather than an animation: the companion photographs the screen
+    // now, and a photograph holds one frame.
+    return (
+      singleFrameForMessage('NP-XPUB', message)?.frames ??
+      autoFramesForMessage('NP-XPUB', message, scanSpeed.preset.fragmentLength).frames
+    );
   }, [
     wallet,
     deviceInfo,

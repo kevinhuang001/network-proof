@@ -9,7 +9,6 @@ import {
   otsuThreshold,
   sizeAdvice,
 } from '../src/lib/finderPattern';
-import { CODE_SHARP_ENOUGH, adviceFor } from '../src/lib/scanner';
 
 /**
  * Measuring the code instead of guessing about it.
@@ -133,80 +132,5 @@ describe('what the user is told', () => {
     // The threshold is the measured one: five pixels per module always reads, two never does,
     // and this is the line between "get closer" and "the problem is elsewhere".
     expect(READABLE_MODULE_PX).toBe(4);
-  });
-});
-
-describe('what the advice is allowed to claim', () => {
-  /*
-   * Three sentences, and each one has been wrong in production at least once.
-   *
-   * 「拿近一点」 was said to a user whose problem was focus. 「码的大小够了」 was said when the
-   * camera had found nothing at all to measure. The order below is the order the measurements can
-   * be trusted: nothing found beats focus beats distance.
-   */
-  const estimate = (modulePx: number) => ({
-    count: 3,
-    modulePx,
-    at: { x: 10, y: 10 },
-    region: { left: 0, top: 0, right: 40, bottom: 40 },
-  });
-
-  it('says nothing at all while the fast path is still trying', () => {
-    // Advice before the scanner has escalated would be advice based on one attempt.
-    expect(adviceFor({ estimate: null, codeSharpness: null, robust: false })).toBeNull();
-  });
-
-  it('does not talk about distance when there is no code to be close to', () => {
-    expect(adviceFor({ estimate: null, codeSharpness: null, robust: true })).toBe('NOT_FOUND');
-  });
-
-  it('blames focus before distance', () => {
-    // A code the right size that is soft: the earlier version told this user to move closer,
-    // which for a fixed-focus lens is exactly the wrong direction.
-    expect(adviceFor({ estimate: estimate(5), codeSharpness: CODE_SHARP_ENOUGH - 5, robust: true })).toBe('FOCUS');
-    // Big enough and sharp: nothing left to blame but the distance, and it is too far.
-    expect(adviceFor({ estimate: estimate(2), codeSharpness: CODE_SHARP_ENOUGH + 10, robust: true })).toContain('拿近');
-  });
-
-  it('uses the calibrated threshold, not a round number', () => {
-    // Measured on a simulated 1080×1920 frame: a clean code measures 28-43 over its own region.
-    expect(CODE_SHARP_ENOUGH).toBe(20);
-  });
-});
-
-describe('believing a detection', () => {
-  /*
-   * The bug: the app cropped the picture it showed the user down to the code it *thought* it had
-   * found, and the finding was a false positive in the corner of the frame. The user's report —
-   * 「实际拍到的只是预览框里的一角」 — was exactly right, and it was the app's own belief being
-   * applied silently rather than shown.
-   *
-   * A QR code's three finder patterns sit at three corners of a square. Checking that shape is
-   * what separates a code from three plausible runs of pixels.
-   */
-  const at = (x: number, y: number) => ({ x, y });
-
-  it('accepts the arrangement a code has', () => {
-    // The classic layout: patterns at top-left, top-right and bottom-left of a square.
-    expect(looksLikeCodeGeometry([at(0, 0), at(400, 0), at(0, 400)], 8)).toBe(true);
-    // Order does not matter: the right angle is wherever the corner is.
-    expect(looksLikeCodeGeometry([at(400, 0), at(0, 0), at(0, 400)], 8)).toBe(true);
-  });
-
-  it('rejects patterns that are not arranged like one', () => {
-    // Three in a line: three real finder patterns are never collinear.
-    expect(looksLikeCodeGeometry([at(0, 0), at(200, 0), at(400, 0)], 8)).toBe(false);
-    // A scalene triangle: the legs of a code's corner are equal.
-    expect(looksLikeCodeGeometry([at(0, 0), at(400, 0), at(0, 120)], 8)).toBe(false);
-    // One pattern is not a code, however convincing it looks.
-    expect(looksLikeCodeGeometry([at(300, 900)], 8)).toBe(false);
-  });
-
-  it('accepts two patterns when they are a code apart', () => {
-    // On a small or soft frame the third is often missed; refusing to measure would be worse.
-    // Twelve modules apart at least: 8 px per module means the patterns are 96 px apart or more.
-    expect(looksLikeCodeGeometry([at(0, 0), at(120, 0)], 8)).toBe(true);
-    // Two runs next to each other are not two corners of anything.
-    expect(looksLikeCodeGeometry([at(0, 0), at(30, 0)], 8)).toBe(false);
   });
 });

@@ -434,32 +434,23 @@ export function SignScreen({ id }: { id: string }): ReactNode {
    * The animation stays one tap away for a camera that cannot resolve a denser code, and is the
    * only option for a payload too big to be one.
    */
-  const [forceAnimated, setForceAnimated] = useState(false);
-  /**
-   * Whether to hold each animated frame longer.
+  /*
+   * No animation, and no choice about it.
    *
-   * The device decodes about one frame a second on an old phone; a code that changes every
-   * 420 ms is a code that is gone before most attempts finish. There is no channel back from the
-   * device to say this, so it is a guess about time — the same honest guess the device makes for
-   * the codes it displays, and a wrong guess costs only a slower transfer.
+   * The device photographs the code with its own camera app, and a photograph is one frame — an
+   * animated code is not merely worse for that reader, it is unreadable. The animation survives
+   * only as the automatic fallback for a payload too large to be one code, where there is nothing
+   * else to offer.
    */
-  const [holdLonger, setHoldLonger] = useState(false);
-  useEffect(() => {
-    if (stageNow !== 'code') return;
-    const timer = window.setTimeout(() => setHoldLonger(true), 10_000);
-    return () => window.clearTimeout(timer);
-  }, [stageNow]);
   const display = useMemo(() => {
     if (!outgoing) return { frames: [] as string[], animated: false };
-    if (!forceAnimated) {
-      const single = singleFrameForMessage('NP-REQ', outgoing.message);
-      if (single) return { frames: single.frames, animated: false };
-    }
+    const single = singleFrameForMessage('NP-REQ', outgoing.message);
+    if (single) return { frames: single.frames, animated: false };
     return {
       frames: autoFramesForMessage('NP-REQ', outgoing.message, settings.qrFragmentLength).frames,
       animated: true,
     };
-  }, [outgoing, settings.qrFragmentLength, forceAnimated]);
+  }, [outgoing, settings.qrFragmentLength]);
   const frames = display.frames;
 
   if (state.step === 'loading') {
@@ -745,11 +736,7 @@ export function SignScreen({ id }: { id: string }): ReactNode {
               <>
                 <QrDisplay
                   frames={frames}
-                  frameDurationMs={
-                    holdLonger
-                      ? Math.max(settings.qrFrameDurationMs, 900)
-                      : settings.qrFrameDurationMs
-                  }
+                  frameDurationMs={settings.qrFrameDurationMs}
                   // A single code is photographed once by hand, so it carries more redundancy
                   // than the app default; the animation keeps the default, where every module
                   // costs scanning time.
@@ -766,9 +753,11 @@ export function SignScreen({ id }: { id: string }): ReactNode {
                       : '用离线手机扫描这个二维码'
                   }
                 />
-                <Button variant="ghost" onClick={() => setForceAnimated((value) => !value)}>
-                  {display.animated ? '换成单张二维码' : '扫不上？换成动画'}
-                </Button>
+                {display.animated ? (
+                  <div className="np-body np-body--tight np-ink-3 np-center">
+                    这笔请求太大，放不进一张二维码，只能一帧一帧发：请用手机的「拍照」逐张拍。
+                  </div>
+                ) : null}
               </>
             ) : null}
 

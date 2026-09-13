@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   HDKey,
   PROTOCOL_VERSION,
@@ -9,6 +9,7 @@ import {
   describePersonalMessage,
   describeTransaction,
   describeTypedData,
+  FrameCollector,
   autoFramesForMessage,
   singleFrameForMessage,
   fromHex,
@@ -30,13 +31,10 @@ import type {
   TransactionSummary,
 } from '@netproof/core';
 import { Alert, Badge, Button, Header, KeyValue, PasswordField, haptic } from '../components/primitives';
-import { CameraStage, QrDisplay } from '../components/QrDisplay';
-import { isAbortError } from '../lib/camera';
+import { QrDisplay } from '../components/QrDisplay';
 import { ROBUST_FALLBACK_MS } from '../lib/qrPresets';
 import { useRobustQrFallback } from '../lib/useRobustQrFallback';
-import { scanHint, startQrScan } from '../lib/scanner';
-import type { ScanStatus } from '../lib/scanner';
-import type { ScanHandle } from '../lib/scanner';
+import { scanPhoto } from '../lib/photoScan';
 import { useSession } from '../state/session';
 
 /**
@@ -55,65 +53,69 @@ export function ScanRequestScreen({
   onDecoded: (request: SignRequestMessage) => void;
   onBack: () => void;
 }): ReactNode {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const scanRef = useRef<ScanHandle | null>(null);
+  /**
+   * Photograph the code with the phone's own camera, rather than reading a live preview.
+   *
+   * Everything that went wrong before came from the live stream: a WebView's video frames are
+   * whatever resolution, orientation and focus the platform decides, the preview the user judges
+   * them by is not necessarily the same picture, and a code that changes while the decoder is
+   * looking at it is a race the slower side loses. A photograph has none of those properties —
+   * and a still photograph of a still code is the one case where there is nothing to race at all.
+   *
+   * The camera app is invoked through a file input with `capture`, which on Android opens the
+   * system camera and returns a full-resolution, autofocused frame. No permission dance, no
+   * preview geometry, no stream to keep alive.
+   */
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const collectorRef = useRef(new FrameCollector('NP-REQ'));
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<FrameCollectorProgress | null>(null);
-  /** What the camera is doing, as opposed to what the decode progress implies it is doing. */
-  const [status, setStatus] = useState<ScanStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [started, setStarted] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!started) return;
-    let cancelled = false;
-    // See CaptureScreen: StrictMode runs this effect twice, and both runs used to leave
-    // a second camera stream open. The controller cancels the first cleanly.
-    const controller = new AbortController();
-    void (async () => {
-      try {
-        const handle = await startQrScan({
-          video: videoRef.current!,
-          expectedType: 'NP-REQ',
-          signal: controller.signal,
-          onProgress: (next) => {
-            if (!cancelled) setProgress(next);
-          },
-          onStatus: (next) => {
-            if (!cancelled) setStatus(next);
-          },
-          onComplete: (payload) => {
-            if (cancelled) return;
-            handle.stop();
-            try {
-              const message = decodeMessage(payload);
-              if (message.t !== 'req') throw new Error('扫描到的不是签名请求');
-              haptic([10, 40, 10]);
-              onDecoded(message);
-            } catch (caught) {
-              setError((caught as Error).message);
-            }
-          },
-          onError: (caught) => {
-            if (!cancelled) setError(caught.message);
-          },
-        });
-        if (cancelled) {
-          handle.stop();
-          return;
-        }
-        scanRef.current = handle;
-      } catch (caught) {
-        // An interrupted start is our own shutdown, not a camera failure.
-        if (!cancelled && !isAbortError(caught)) setError((caught as Error).message);
+  const takePhoto = async (file: File): Promise<void> => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const result = await scanPhoto(file);
+      setPhoto(result.preview);
+      if (result.text === null) {
+        const located = result.attempts.some((attempt) => attempt.name === '定位二维码' && !attempt.decoded);
+        setProblem(
+          located
+            ? '照片里没有找到二维码的方块。把二维码放在画面中间、占大一些，再拍一张。'
+            : `照片里找到了二维码，但读不出来（原图 ${result.size.width}×${result.size.height}）。` +
+              '让二维码在画面里更大一些、别反光，再拍一张。',
+        );
+        return;
       }
-    })();
-    return () => {
-      cancelled = true;
-      controller.abort();
-      scanRef.current?.stop();
-      scanRef.current = null;
-    };
-  }, [started, onDecoded]);
+
+      /*
+       * Frames accumulate across photographs.
+       *
+       * A code too large to be one still image is sent as an animation, and a photograph can only
+       * ever catch one frame of one — so the collector keeps what each photograph contributed and
+       * asks for another, which is exactly what the fountain code is for.
+       */
+      const next = collectorRef.current.addText(result.text);
+      setProgress(next);
+      if (!collectorRef.current.complete) {
+        setProblem(`已收到 ${next.solved}/${next.total} 个分片，请对着同一张码再拍一张。`);
+        return;
+      }
+      const message = decodeMessage(collectorRef.current.result());
+      if (message.t !== 'req') throw new Error('拍到的不是签名请求二维码');
+      haptic([10, 40, 10]);
+      onDecoded(message);
+    } catch (caught) {
+      setProblem(`无法读取这张照片：${(caught as Error).message}`);
+    } finally {
+      setBusy(false);
+      // Let the same file be chosen again — a second photo of the same code is a normal thing to
+      // do, and a file input that refuses an identical path would silently do nothing.
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
 
   const fraction = progress && progress.total > 0 ? progress.solved / progress.total : 0;
 
@@ -121,68 +123,55 @@ export function ScanRequestScreen({
     <>
       <Header title="扫描签名请求" onBack={onBack} />
       <div className="np-main">
-        {!started ? (
-          <>
-            <h2 className="np-headline">扫描插件钱包的二维码</h2>
-            <p className="np-body">在插件钱包里发起请求，扫它显示的二维码。</p>
-          </>
-        ) : (
-          <CameraStage
-            videoRef={videoRef}
-            hint={scanHint({ status, progress })}
-            progressLabel={progress?.total ? `${progress.solved}/${progress.total} 分片` : '等待二维码'}
-            progressValue={fraction}
-            tone={fraction >= 1 ? 'up' : 'neutral'}
-          />
-        )}
+        <h2 className="np-headline">拍一张二维码的照片</h2>
+        <p className="np-body">
+          在插件钱包里发起请求，然后点下面的按钮用系统相机拍它显示的二维码。
+          照片会留在本机，只有解析出的请求会进入下一步。
+        </p>
 
-        {/*
-          The input to the decoder, shown to the person who can see the scene.
-
-          Not a decoration and not a debug view for its own sake: 「我看的二维码很清楚了，但还是
-          识别不出来」 is a sentence only this picture can settle, because what the eye sees across
-          the room and what the camera delivers are different pictures — one is sharp, bright and
-          framed, the other is whatever the lens, the exposure and the crop left of it.
-        */}
-        {status?.sample ? (
+        {photo ? (
           <div className="np-card">
-            <div className="np-label">摄像头实际拍到的画面</div>
-            <img src={status.sample} alt="摄像头取样" className="np-sample" />
-            <div className="np-body np-body--tight np-ink-3" style={{ marginTop: 8 }}>
-              {/*
-                Said plainly, because the question being asked of this picture is whether it matches
-                the preview above it — same framing, same frames — and because the app's own belief
-                about where the code is has to be visible rather than applied silently.
-              */}
-              {'这是解码器拿到的整帧画面（和上面预览同一帧，浏览器缩放到卡片宽度）。'}
-              {status.codeSize
-                ? `绿框是识别到的二维码位置：${status.codeSize.width}×${status.codeSize.height} 像素。`
-                : '还没有在画面里找到二维码的方块，所以没有绿框。'}
-              {status.codeSharpness === null || status.codeSharpness === undefined
-                ? ''
-                : `码区域清晰度 ${status.codeSharpness.toFixed(0)}（低于 20 说明这张图本身是糊的）。`}
+            <div className="np-label">这张照片</div>
+            <img src={photo} alt="二维码照片" className="np-sample" />
+          </div>
+        ) : null}
+
+        {progress && progress.total > 0 ? (
+          <div className="np-stack" style={{ gap: 6 }}>
+            <div className="np-row np-row--between">
+              <span className="np-body np-body--tight">{`${progress.solved}/${progress.total} 分片`}</span>
+              <span className="np-badge np-badge--accent">{Math.round(fraction * 100)}%</span>
+            </div>
+            <div className={`np-progress${fraction >= 1 ? ' np-progress--up' : ''}`}>
+              <div className="np-progress__bar" style={{ width: `${Math.min(100, fraction * 100)}%` }} />
             </div>
           </div>
         ) : null}
 
-        {error ? <Alert tone="danger">{error}</Alert> : null}
-        {progress && progress.rejectedFrames > 3 ? (
-          <Alert tone="warn" title="扫到了别的二维码">
-            摄像头读出了二维码，但它不是这次要签名的请求（类型不符或属于另一次传输）。
-            请确认插件钱包屏幕上显示的就是当前这笔请求。
-          </Alert>
-        ) : null}
-        {progress && progress.duplicateFrames > 10 ? (
-          <Alert tone="warn">重复扫到同一帧，请确认插件钱包的二维码动画正在播放。</Alert>
-        ) : null}
+        {problem ? <Alert tone="warn">{problem}</Alert> : null}
       </div>
-      {!started ? (
-        <div className="np-footer">
-          <Button block onClick={() => setStarted(true)}>
-            打开摄像头
-          </Button>
-        </div>
-      ) : null}
+
+      <div className="np-footer">
+        {/*
+          `capture` asks Android for its own camera app; without it the same input still lets the
+          user pick a photo they already took. Both are fine, and the second is a real fallback on
+          a phone whose camera app misbehaves.
+        */}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: 'none' }}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void takePhoto(file);
+          }}
+        />
+        <Button block disabled={busy} onClick={() => fileRef.current?.click()}>
+          {busy ? '正在读取…' : photo ? '再拍一张' : '拍照'}
+        </Button>
+      </div>
     </>
   );
 }
