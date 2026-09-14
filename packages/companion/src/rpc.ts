@@ -89,21 +89,21 @@ async function dispatch(method: string, params: unknown[], context: RpcContext):
     case 'net_version':
       return String(settings.chainId);
 
+    /*
+     * EIP-2255: a wallet that answers `wallet_requestPermissions` is expected to answer
+     * `wallet_getPermissions` too, and connectors do check it after connecting. Answering with an
+     * unsupported-method error where a permission list is expected is the difference between
+     * "connected" and "nothing happened".
+     *
+     * This case existed twice — the same branch written two ways, in two places — and the second
+     * was dead code that the bundler had been warning about. The surviving version is the one that
+     * returns an empty list to a site that was never approved, because "you have no permissions
+     * here" is the honest answer and an error is not.
+     */
     case 'wallet_getPermissions':
       return approvedOrigins.includes(origin)
         ? [{ parentCapability: 'eth_accounts', caveats: [] }]
         : [];
-
-    /*
-     * EIP-2255: a wallet that answers `wallet_requestPermissions` is expected to answer
-     * `wallet_getPermissions` too, and connectors do check it after connecting. Answering
-     * with an unsupported-method error where a permission list is expected is the difference
-     * between "connected" and "nothing happened".
-     */
-    case 'wallet_getPermissions': {
-      if (!approvedOrigins.includes(origin)) return [];
-      return [{ parentCapability: 'eth_accounts', caveats: [] }];
-    }
 
     /*
      * EIP-5792: `{}` means "no optional capabilities". Saying so explicitly is better than an
