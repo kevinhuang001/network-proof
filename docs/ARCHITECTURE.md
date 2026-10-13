@@ -41,4 +41,4 @@ dApp -> Companion (只读数据 / 待签请求)
 
 ## 质量门禁
 
-`pnpm typecheck`、`pnpm test`、`pnpm build`；实际像素 QR 测试已在 `packages/core/test/qr-e2e.test.ts`。CI 还构建原生 Android debug APK、运行原生单元测试并检查 CAMERA / INTERNET 权限。硬件相机焦距、摩尔纹、厂商 WebView 差异只能由实机回归验证。
+`pnpm typecheck`、`pnpm test`、`pnpm build`；实际像素 QR 测试已在 `packages/core/test/qr-e2e.test.ts`。CI 还构建原生 Android debug APK、运行原生单元测试并检查 CAMERA / INTERNET 权限；独立 Android 模拟器集成测试验证安装后的应用 ID、系统权限和禁用备份的约束。硬件相机焦距、摩尔纹、厂商 WebView 差异只能由实机回归验证。

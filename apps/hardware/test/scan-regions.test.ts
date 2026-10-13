@@ -23,6 +23,24 @@ describe('photo scanning fallback plan', () => {
       }
     });
   }
+  it('keeps an entire small QR in at least one tile across a dense grid of positions', () => {
+    const size = { width: 4000, height: 3000 };
+    const regions = planPhotoRegions(size);
+    const codeWidth = size.width * 0.14;
+    const codeHeight = size.height * 0.14;
+    for (let xi = 0; xi <= 16; xi++) {
+      for (let yi = 0; yi <= 16; yi++) {
+        const x = (size.width - codeWidth) * xi / 16;
+        const y = (size.height - codeHeight) * yi / 16;
+        expect(regions.some(r =>
+          r.left <= x && r.top <= y &&
+          r.left + r.width >= x + codeWidth &&
+          r.top + r.height >= y + codeHeight
+        )).toBe(true);
+      }
+    }
+  });
+
   it('rejects missing or malformed camera dimensions', () => {
     expect(planPhotoRegions({ width: 0, height: 320 })).toEqual([]);
     expect(planPhotoRegions({ width: Number.NaN, height: 320 })).toEqual([]);
