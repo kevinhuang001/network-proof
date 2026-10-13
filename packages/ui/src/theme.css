@@ -1297,3 +1297,43 @@ html.np-no-flex-gap .np-sheet > * + * { margin-top: 14px; }
 html.np-no-flex-gap .np-sheet--compact > * + * { margin-top: 6px; }
 html.np-no-flex-gap .np-menu__panel > * + * { margin-top: 2px; }
 html.np-no-flex-gap .np-menu__item > * + * { margin-left: 10px; }
+
+
+/* 2026 design-system refresh: consistent focus, feedback and accessible motion. */
+:where(button, a, input, textarea, select):focus-visible {
+  outline: 3px solid var(--np-accent);
+  outline-offset: 3px;
+}
+:where(button, a, input, textarea, select) {
+  touch-action: manipulation;
+}
+.np-card {
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.np-card--raised {
+  box-shadow: 0 8px 28px rgba(18, 25, 46, 0.055);
+}
+@media (hover: hover) and (pointer: fine) {
+  .np-list__item:not(.np-list__item--static):hover {
+    background: var(--np-bg-subtle);
+  }
+  .np-btn:not(:disabled):hover {
+    filter: brightness(0.96);
+  }
+  .np-card--raised:hover {
+    box-shadow: 0 12px 36px rgba(18, 25, 46, 0.085);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+@media (prefers-contrast: more) {
+  .np-card, .np-list, .np-header, .np-footer {
+    border-color: var(--np-ink-2);
+  }
+}
