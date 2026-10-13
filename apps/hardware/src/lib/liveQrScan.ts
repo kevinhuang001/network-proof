@@ -2,6 +2,10 @@ import jsQR from 'jsqr';
 import { requestCameraStream, attachStream } from './camera';
 
 /** Continuous offline QR decoding. No frame, image or request ever leaves this device. */
+export function shouldAcceptFrame(text: string, previousText: string, now: number, previousAt: number): boolean {
+  return text.length > 0 && (text !== previousText || now - previousAt >= 1000);
+}
+
 export interface LiveScanHandle {
   stop(): void;
 }
@@ -59,7 +63,7 @@ export async function startLiveQrScan(
       const result = jsQR(image.data, image.width, image.height, { inversionAttempts: 'attemptBoth' });
       if (!result?.data) return;
       // Avoid redundant work on static QR codes; repeated animated frames remain accepted.
-      if (result.data === lastText && now - lastTextAt < 1000) return;
+      if (!shouldAcceptFrame(result.data, lastText, now, lastTextAt)) return;
       lastText = result.data;
       lastTextAt = now;
       onCode(result.data);
