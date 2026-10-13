@@ -1,11 +1,9 @@
-declare const __NP_BUILD__: string;
-
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { Alert, Button, Header } from '../components/primitives';
 import { TextField } from '@netproof/ui/text-field';
-import { QR_PRESET_ORDER } from '../lib/qrPresets';
 import { useSession } from '../state/session';
+import { BuildCard, QrSpeedSettings, SolanaAccountSettings } from './settings/Preferences';
 
 /**
  * Settings.
@@ -14,18 +12,6 @@ import { useSession } from '../state/session';
  * configure, and every extra line here is a line the user has to read before they can
  * get back to the two things the device is for.
  */
-/** Which build this is, so "install the new one" is answerable from the screen. */
-function BuildCard(): ReactNode {
-  return (
-    <div className="np-card">
-      <div className="np-label">版本</div>
-      <div className="np-body np-body--tight np-num" style={{ marginTop: 6 }}>
-        {__NP_BUILD__}
-      </div>
-    </div>
-  );
-}
-
 export function DiagnosticsScreen({
   onBack,
   onWipe,
@@ -42,51 +28,14 @@ export function DiagnosticsScreen({
       <Header title="设置" onBack={onBack} />
       <div className="np-main">
         <BuildCard />
-        <div className="np-card">
-          <div className="np-label">扫码速度</div>
-          <div className="np-chip-row" style={{ marginTop: 10 }}>
-            {QR_PRESET_ORDER.map(({ label, preset }) => (
-              <button
-                key={label}
-                type="button"
-                className={`np-chip${
-                  settings.qrFragmentLength === preset.fragmentLength ? ' np-chip--active' : ''
-                }`}
-                onClick={() =>
-                  updateSettings({
-                    qrFragmentLength: preset.fragmentLength,
-                    qrFrameDurationMs: preset.frameDurationMs,
-                  })
-                }
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="np-body np-body--tight" style={{ marginTop: 8 }}>
-            扫不上会自动切到「稳健」。
-          </div>
-        </div>
-
-        <div className="np-card">
-          <div className="np-label">Solana 默认登录派生数量</div>
-          <div className="np-chip-row" style={{ marginTop: 10 }}>
-            {[5, 10, 20].map((count) => (
-              <button
-                key={count}
-                type="button"
-                className={`np-chip${settings.solanaAddressCount === count ? ' np-chip--active' : ''}`}
-                onClick={() => updateSettings({ solanaAddressCount: count })}
-              >
-                {count}
-              </button>
-            ))}
-          </div>
-          <div className="np-body np-body--tight" style={{ marginTop: 8 }}>
-            Solana 没有可观察的账户公钥，导出的是地址本身，这里定登录时导出几个。
-          </div>
-        </div>
-
+        <QrSpeedSettings
+          fragmentLength={settings.qrFragmentLength}
+          onChange={(qrFragmentLength, qrFrameDurationMs) => updateSettings({qrFragmentLength, qrFrameDurationMs})}
+        />
+        <SolanaAccountSettings
+          count={settings.solanaAddressCount}
+          onChange={(solanaAddressCount) => updateSettings({solanaAddressCount})}
+        />
         <div className="np-card">
           <div className="np-label">危险操作</div>
           <p className="np-body np-body--tight" style={{ marginTop: 6 }}>
