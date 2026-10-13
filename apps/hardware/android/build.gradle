@@ -22,6 +22,15 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    // Android instrumented tests reveal a transitive dependency conflict:
+    // modern kotlin-stdlib 1.8+ already contains the JDK7/JDK8 implementations,
+    // while old AndroidX/test libraries bring split 1.6.x stdlib artifacts.
+    // Exclude only the obsolete split packages across *all* Capacitor modules.
+    configurations.configureEach {
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+    }
 }
 
 task clean(type: Delete) {

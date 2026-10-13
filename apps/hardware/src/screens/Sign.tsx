@@ -67,6 +67,7 @@ export function ScanRequestScreen({
    * preview geometry, no stream to keep alive.
    */
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const galleryRef = useRef<HTMLInputElement | null>(null);
   const collectorRef = useRef(new FrameCollector('NP-REQ'));
   const [photo, setPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -114,6 +115,7 @@ export function ScanRequestScreen({
       // Let the same file be chosen again — a second photo of the same code is a normal thing to
       // do, and a file input that refuses an identical path would silently do nothing.
       if (fileRef.current) fileRef.current.value = '';
+      if (galleryRef.current) galleryRef.current.value = '';
     }
   };
 
@@ -168,8 +170,21 @@ export function ScanRequestScreen({
             if (file) void takePhoto(file);
           }}
         />
+        <input
+          ref={galleryRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void takePhoto(file);
+          }}
+        />
         <Button block disabled={busy} onClick={() => fileRef.current?.click()}>
-          {busy ? '正在读取…' : photo ? '再拍一张' : '拍照'}
+          {busy ? '正在读取…' : photo ? '再拍一张' : '拍照扫码'}
+        </Button>
+        <Button block variant="secondary" disabled={busy} onClick={() => galleryRef.current?.click()}>
+          从相册选择二维码照片
         </Button>
       </div>
     </>

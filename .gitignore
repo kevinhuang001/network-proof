@@ -16,3 +16,9 @@ artifacts/*.jks
 # An extracted copy of the extension build, for loading into a browser.
 artifacts/netproof-extension-*/
 artifacts/*.pem
+
+# Build artifacts and signing material are never source-controlled.
+artifacts/*.zip
+artifacts/*-aligned.apk
+*.keystore
+*.jks
