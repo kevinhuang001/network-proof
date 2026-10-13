@@ -9,6 +9,7 @@ import { ChainLogo } from '../ui/icons';
 import { TextField } from '@netproof/ui/text-field';
 import { createPasscodeRecord, verifyPasscode } from '../lib/lock';
 import { loadPasscode } from '../lib/store';
+import { rpcUrlError } from '../lib/rpcValidation';
 
 /**
  * Settings.
@@ -47,6 +48,7 @@ export function SettingsScreen(): ReactNode {
   } = useCompanion();
   const [draft, setDraft] = useState(settings);
   const { toast, show } = useToast();
+  const rpcError = rpcUrlError(draft.rpcUrls[draft.chainId] ?? '');
 
   useEffect(() => setDraft(settings), [settings]);
 
@@ -123,6 +125,7 @@ export function SettingsScreen(): ReactNode {
         <div className="np-body np-body--tight" style={{ marginTop: 8 }}>
           公共节点能看到你查询过的地址。
         </div>
+        {rpcError ? <Alert tone="warn">{rpcError}</Alert> : null}
       </div>
 
       <div className="np-card">
@@ -188,7 +191,7 @@ export function SettingsScreen(): ReactNode {
 
       <WorkerDiagnostics />
 
-      <Button block onClick={() => { updateSettings(draft); show('设置已保存'); }}>
+      <Button block disabled={Boolean(rpcError)} onClick={() => { updateSettings(draft); show('设置已保存'); }}>
         保存设置
       </Button>
       <Toast message={toast} />
