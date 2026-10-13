@@ -42,3 +42,21 @@ dApp -> Companion (只读数据 / 待签请求)
 ## 质量门禁
 
 `pnpm typecheck`、`pnpm test`、`pnpm build`；实际像素 QR 测试已在 `packages/core/test/qr-e2e.test.ts`。CI 还构建原生 Android debug APK、运行原生单元测试并检查 CAMERA / INTERNET 权限；独立 Android 模拟器集成测试验证安装后的应用 ID、系统权限和禁用备份的约束。硬件相机焦距、摩尔纹、厂商 WebView 差异只能由实机回归验证。
+
+
+## 2026 模块边界调整
+
+- `packages/companion-ui/src/navigation/routes.ts`：路由类型与 URL 解析；不依赖 React 状态与持久化。
+- `packages/companion-ui/src/state/settingsScope.ts`：全局及钱包级设置的拆分策略，由 Provider 调用。
+- `apps/hardware/src/screens/settings/Preferences.tsx`：版本、二维码速度、Solana 地址数等独立设置组件。
+- `apps/hardware/src/screens/Sign.tsx`：QR 采集进度及确认流程；支持清除失败/陈旧分片后重新扫码。
+- `packages/ui/src/theme.css`：共用交互状态（键盘焦点、悬浮反馈、减少动态效果和高对比度）。
+
+### 跨层调用约束
+
+`packages/core` 必须是跨平台纯计算；任何签名、助记词、QR 协议的修改要经过兼容性及安全回归。
+平台 I/O（相机、浏览器存储、HTTP RPC）位于各 App 或 companion 服务包；UI 只能通过接口调用，不在展示组件里重复签名与解析算法。
+
+### 后续模块化目标
+
+目前 `packages/companion-ui/src/App.tsx` 仍负责较多 Provider 与导航组合逻辑；`screens/Sign.tsx` 等页面也偏大。进一步拆分须基于 E2E 保护，不以文件行数减少作为唯一目标。
