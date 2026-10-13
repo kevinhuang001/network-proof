@@ -1,6 +1,6 @@
 {
   "name": "netproof-wallet",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Air-gapped hardware wallet built from an offline Android phone (Capacitor) + Chrome extension companion wallet.",
   "type": "module",
