@@ -3,7 +3,7 @@
 ## 流程
 
 - `.github/workflows/ci.yml` 在 PR 和 `main` 推送时运行完整 TypeScript 检查、测试、浏览器构建及原生 Android debug 构建。构建的 APK 还检查 CAMERA 存在、INTERNET 不存在。
-- `.github/workflows/release.yml` 在 `main` 推送或手动触发时先运行 `pnpm verify`，然后构建 Android **未签名** Release APK，用 GitHub Secrets 中的原有 keystore 签名，校验后生成 `netproof-air-0.2.0.apk`、扩展 ZIP 和 `SHA256SUMS.txt`。
+- `.github/workflows/release.yml` 只在 `main` 分支的 CI 成功结束后（或仓库维护者手动触发）先运行 `pnpm verify`，然后构建 Android **未签名** Release APK，用 GitHub Secrets 中的原有 keystore 签名，校验后生成 `netproof-air-0.2.0.apk`、扩展 ZIP 和 `SHA256SUMS.txt`。
 - 所有验证都成功后，若 `v0.2.0` 尚不存在，创建对应 GitHub Release。已有同名版本**不会覆盖**；升级版本时必须同时更新 YAML 中的 TAG、软件版本号和文档。此流程不是 Chrome Web Store / Google Play 的商店发布。
 
 ## 需要的 GitHub Actions Secrets
