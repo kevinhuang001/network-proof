@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { EntropyResult, SignRequestMessage, SignResponseMessage } from '@netproof/core';
+import type { EntropyResult } from '@netproof/core';
+import type { Route } from './navigation/routes';
 import { SessionProvider, useSession } from './state/session';
 import { CaptureScreen } from './screens/Capture';
 import { entropyToMnemonic } from '@netproof/core';
@@ -31,27 +32,6 @@ import { Alert, Button, Header } from './components/primitives';
  * one file makes the state transitions (and their security implications) visible
  * at a glance.
  */
-type Route =
-  | { name: 'welcome' }
-  | { name: 'capture' }
-  | { name: 'backup'; entropy: EntropyResult }
-  | { name: 'passphrase'; entropy: EntropyResult }
-  | { name: 'password'; entropy: EntropyResult; passphrase: string }
-  | { name: 'import' }
-  | { name: 'unlock' }
-  | { name: 'device' }
-  | { name: 'login-qr' }
-  | { name: 'wallets' }
-  | { name: 'wallet'; id: string }
-  | { name: 'add-capture' }
-  | { name: 'add-backup'; entropy: EntropyResult }
-  | { name: 'add-passphrase'; entropy: EntropyResult }
-  | { name: 'add-name'; entropy: EntropyResult; passphrase: string }
-  | { name: 'add-import' }
-  | { name: 'scan' }
-  | { name: 'review'; request: SignRequestMessage }
-  | { name: 'signature'; response: SignResponseMessage }
-  | { name: 'diagnostics' };
 
 export function App(): ReactNode {
   return (
