@@ -8,6 +8,7 @@
 | 缩图 finder 找错位置会走无效裁剪 | 独立的分区回退不依赖 finder 成功，且首个解码成功立即返回 | 原有 finder / photo 测试 + 新测试 |
 | 相机调不起来无法换路径 | 增加「从相册选择二维码照片」，两条路径复用同一解码函数 | 自动类型检查；相机系统 UI 仍需旧安卓机测试 |
 | Git 树里存放重复构建 ZIP | 移除历史 ZIP，改为 CI 生成发行产物 | `scripts/verify-extension.mjs` 检查扩展入口和固定 ID |
+| Android 模拟器测试报 Kotlin stdlib 1.8.22 与历史 1.6.21 JDK7/JDK8 包重复类 | 在 Gradle 所有子模块的配置中排除旧版拆分包，保留新版标准库 | CI 的 `connectedDebugAndroidTest` 复测 |
 | 无 Actions 工作流 | `ci.yml` 覆盖 TS 类型、单元/协议测试、构建，Android Gradle 本地单元测试和 APK 权限检查 | PR / main push 执行 |
 | APK 正式发布可能意外生成弱的原型签名 | Gradle release 改为 unsigned；单独用已存在的 keystore 签名，缺少密钥时拒绝发布 | 签名校验 `apksigner verify`；必须与旧证书指纹一致 |
 | 缺少可重复发布流程 | `release.yml` 使用 Actions secret、生成 APK+扩展 ZIP+SHA256SUMS 并创建 GitHub Release | 必须具备正确的 secret 名称和 Actions 写权限 |
