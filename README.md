@@ -1,77 +1,69 @@
-# NetProof · 隔空签名钱包
+# NetProof — 离线 Android 签名钱包
 
-[![CI](https://github.com/kevinhuang001/network-proof/actions/workflows/ci.yml/badge.svg)](https://github.com/kevinhuang001/network-proof/actions/workflows/ci.yml)
-[![Release](https://github.com/kevinhuang001/network-proof/actions/workflows/release.yml/badge.svg)](https://github.com/kevinhuang001/network-proof/actions/workflows/release.yml)
+NetProof 使用一台不联网的 Android 手机保存助记词并执行离线签名；Chrome 扩展与在线 Web 伴侣负责账户查看、RPC 请求以及广播。双方只通过二维码交换结构化请求与签名响应。
 
-NetProof 把一部**离线 Android 手机**作为签名设备（NetProof Air），与联网电脑上的浏览器插件 / 伴侣网页（NetProof Companion）通过二维码交换公开信息与签名请求。私钥不应离开离线手机。此项目是**原型级软件，不是经过独立安全审计的硬件钱包**；请不要直接用于保管无法承受损失的资产。
+> **安全提醒**：请先阅读 [安全模型](docs/SECURITY.md) 与 [用户指南](docs/USER_GUIDE.md)。本项目涉及真实私钥和交易签名，未经独立安全审计不应存储无法承受损失的资产。
 
-## 获取与安装
+## 组件
 
-从 [GitHub Releases](https://github.com/kevinhuang001/network-proof/releases) 下载：
+| 路径 | 职责 |
+| --- | --- |
+| `apps/hardware` | Android / Capacitor 离线端，熵采集、地址推导、签名、连续 QR 扫描 |
+| `apps/extension` | Chrome MV3 扩展与网站注入桥 |
+| `apps/companion-web` | 独立伴侣网页 |
+| `packages/core` | 密码学、钱包、QR 协议和交易摘要 |
+| `packages/companion` | 联网 RPC、账户与交易辅助逻辑 |
+| `packages/companion-ui` | 扩展与伴侣网页共用的界面 |
+| `packages/ui` | 通用 UI、主题与网络资源 |
 
-- `netproof-air-0.2.0.apk`：Android 安装包（由 CI 使用既有签名密钥签名）。
-- `netproof-companion-extension-0.2.0.zip`：Chrome / Chromium 扩展；解压后在 `chrome://extensions` 中开启开发者模式，再选择「加载已解压的扩展程序」。
-- `SHA256SUMS.txt`：两个安装包的 SHA-256 校验值。
+核心隔离要求：手机 App 不请求 `android.permission.INTERNET`，助记词及私钥不通过二维码发送到联网端。
 
-**不要卸载原来存有钱包的手机应用，除非已安全备份助记词并确认能恢复。** Android 更新安装要求应用包名和签名证书与旧版本相同；包名保持为 `io.netproof.air`，签名须使用你原先的密钥。首次使用先以小额测试。GitHub Release 分发扩展 ZIP **不等于**已经提交到 Chrome Web Store。
+## 本地运行与测试
 
-完整操作见 [使用手册](docs/USER_GUIDE.md)，发行说明见 [RELEASE_NOTES](docs/RELEASE_NOTES.md)。
-
-## 三个应用与共享模块
-
-```text
-apps/
-  hardware/          离线 Android（Capacitor + React）
-    src/screens/      手机各页面
-    src/lib/          相机、照片 QR 解码及 UI 适配
-    android/          Android 原生壳、权限和 Gradle
-    test/             照片及 UI 回归测试
-  companion-web/     浏览器网页版伴侣
-  extension/         Manifest V3 浏览器插件
-packages/
-  core/              纯 TS 密码学、熵、QR 帧、签名和保管库
-  companion/         节点调用、账户模型与安全策略
-  companion-ui/      浏览器伴侣的共享 React 页面
-  ui/                通用组件、颜色和 QR 布局
-docs/                 规范、威胁模型、兼容性与变更记录
-.github/workflows/    多环境 CI 与发布流水线
-scripts/             Android 构建 / 发行内容检查
-```
-
-### 快速开发
-
-需要 Node.js 22、pnpm 11；Android 构建额外需要 JDK 21、Android SDK API 36 / Build Tools 36.0.0。
+开发环境：Node.js 22、pnpm 11.24.0。构建 Android 还需要 JDK 21、Android SDK 36。
 
 ```bash
-corepack enable
 pnpm install --frozen-lockfile
-pnpm typecheck
-pnpm test
-pnpm build
+pnpm verify
 pnpm --filter @netproof/hardware exec cap sync android
+cd apps/hardware/android
+./gradlew testDebugUnitTest assembleDebug
 ```
 
-`pnpm verify` 执行所有 TypeScript 检查、测试和网页 / 插件构建。GitHub Actions 还会构建和验证 Android APK，检查其必须有 CAMERA、不得有 INTERNET 权限。签名发行见 [发布与签名指南](docs/RELEASING.md)。
+`pnpm verify` 包含类型检查、工作区测试和 Web/扩展构建。更多命令见 [开发规范](docs/DEVELOPMENT.md)。
 
-### 二维码流程
+## 二维码签名流程
 
-- **配对**：离线设备显示 xpub / 公共地址二维码，联网伴侣扫描并建立只读账户视图。
-- **签名**：浏览器创建请求二维码；Android 用系统相机拍照后本地解析并展示交易；用户确认后离线签名；电脑扫描签名结果。
-- **扫码恢复**：Android 先扫描缩图，尝试定位二维码，然后以重叠的高分辨率区域再识别；相机调起失败时可从相册选取本机照片。超过单帧容量时仍通过现有喷泉码收集多帧。
+1. 在 Chrome 插件中创建签名请求，并显示静态或动态二维码。
+2. 在离线 Android App 中选择 **连续扫码（推荐）**，自动读取动态二维码的多个片段；也支持拍照和从相册选取静态二维码。
+3. 在手机屏幕上审核签名内容、链、目标地址及手续费，确认后在设备本地签名。
+4. 将手机显示的签名响应二维码交给插件读取，插件检查结果并广播交易。
 
-为安全起见，不开放通过网络上传助记词、私钥、xprv 或签名请求的后门。真实 Android 不同机型的摄像头兼容性仍必须做实机测试。
+扫码细节和设备兼容方案参见 [Android 扫码说明](docs/QR_SCANNING.md)。协议格式参见 [PROTOCOL](docs/PROTOCOL.md)。
 
-## 文档
+## 构建产物与发行
 
-- [使用手册 / 扫码故障排查](docs/USER_GUIDE.md)
-- [模块边界与数据流](docs/ARCHITECTURE.md)
-- [重构与问题清单](docs/REFACTORING.md)
-- [签名与自动发布](docs/RELEASING.md)
-- [气隙协议](docs/PROTOCOL.md) · [安全模型](docs/SECURITY.md) · [旧安卓兼容性](docs/COMPAT.md)
+CI 在每个 PR/main 提交运行 TypeScript、协议测试、插件验证及 Android 原生构建/测试。签名 Release 工作流利用仓库现有 GitHub Actions Secrets 中的 keystore 生成 Android APK，并与 Chrome 插件 ZIP 一并发布到 GitHub Releases。没有正确签名密钥时会失败，绝不使用临时签名代替。
 
-## 安全边界
+- [GitHub Actions](https://github.com/kevinhuang001/network-proof/actions)
+- [发行下载](https://github.com/kevinhuang001/network-proof/releases)
+- [发行维护手册](docs/RELEASING.md)
+- [测试矩阵与实机验收](docs/TESTING.md)
 
-- Android 应用包名和扩展 Manifest 的 `key` 保持不变，防止更新后安装失败或浏览器插件 ID 变化造成已存数据不可见。
-- 私钥只在离线设备生成、保管和用于签名。设备数据仍受所在手机、Android WebView 及设备密码安全性制约。
-- Android APK 不声明 `INTERNET`，但这不是独立的硬件隔离，也不能代替飞行模式和实机验证。
-- 摄像头熵的启发式估计未经 NIST SP 800-90B 完整认证；未知合约调用不能仅依赖展示的摘要。
+GitHub Release 提供的是 APK 和未上架的 Chrome 扩展 ZIP，不表示已发布 Google Play 或 Chrome Web Store。
+
+## 项目文档
+
+- [架构](docs/ARCHITECTURE.md)
+- [协议](docs/PROTOCOL.md)
+- [安全模型](docs/SECURITY.md)
+- [兼容性](docs/COMPAT.md)
+- [Android 扫码](docs/QR_SCANNING.md)
+- [用户指南](docs/USER_GUIDE.md)
+- [开发规范](docs/DEVELOPMENT.md)
+- [测试矩阵](docs/TESTING.md)
+- [发行流程](docs/RELEASING.md)
+
+## 许可证
+
+以仓库实际授权文件为准；没有授权文件不意味着可以任意重新分发或商用。
