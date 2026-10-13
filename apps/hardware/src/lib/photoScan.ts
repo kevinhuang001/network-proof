@@ -2,6 +2,7 @@ import jsQR from 'jsqr';
 import QRCode from 'qrcode';
 import { qr as qrTokens } from '@netproof/ui';
 import { estimateFinder } from './finderPattern';
+import { planPhotoRegions } from './scanRegions';
 
 /**
  * Read a QR code out of a photograph.
@@ -178,17 +179,38 @@ export async function scanPhoto(blob: Blob): Promise<PhotoScanResult> {
       return { text: first.data, size, attempts, preview: previewOf(overview.canvas) };
     }
 
-    // Pass 2: locate the code in that copy, then read its region from the original pixels.
+    // Pass 2: finder-assisted high-resolution crop. Finding a region is an optional
+    // optimization, not a requirement for decoding the photograph.
     const estimate = estimateFinder(
       grayscale(overviewImage.data, overviewImage.width * overviewImage.height),
       overviewImage.width,
       overviewImage.height,
     );
+    const regions: Array<{ name: string; left: number; top: number; right: number; bottom: number }> = [];
     if (estimate?.region) {
-      const crop = cropForRegion(estimate.region, scale, size);
+      regions.push({ name: '定位区域（原始像素）', ...cropForRegion(estimate.region, scale, size) });
+    } else {
+      attempts.push({ name: '定位二维码', width: 0, height: 0, decoded: false });
+    }
+
+    // Pass 3: independent, overlapping source-image crops. An out-of-focus or
+    // small code often defeats finder detection after downsampling. Previously
+    // that was the end of the scan; now it still gets full-resolution attempts.
+    for (const candidate of planPhotoRegions(size)) {
+      regions.push({
+        name: candidate.name,
+        left: candidate.left,
+        top: candidate.top,
+        right: candidate.left + candidate.width,
+        bottom: candidate.top + candidate.height,
+      });
+    }
+
+    for (const crop of regions) {
       const width = crop.right - crop.left;
       const height = crop.bottom - crop.top;
-      const fit = Math.min(1, REGION_MAX / Math.max(width, height, 1));
+      if (width < 32 || height < 32) continue;
+      const fit = Math.min(1, REGION_MAX / Math.max(width, height));
       const region = canvasOf(
         Math.max(1, Math.round(width * fit)),
         Math.max(1, Math.round(height * fit)),
@@ -196,33 +218,19 @@ export async function scanPhoto(blob: Blob): Promise<PhotoScanResult> {
       region.context.imageSmoothingEnabled = fit < 1;
       region.context.imageSmoothingQuality = 'high';
       region.context.drawImage(
-        bitmap,
-        crop.left,
-        crop.top,
-        width,
-        height,
-        0,
-        0,
-        region.canvas.width,
-        region.canvas.height,
+        bitmap, crop.left, crop.top, width, height,
+        0, 0, region.canvas.width, region.canvas.height,
       );
-      const regionImage = region.context.getImageData(0, 0, region.canvas.width, region.canvas.height);
-      const second = jsQR(regionImage.data, regionImage.width, regionImage.height, {
-        inversionAttempts: 'attemptBoth',
-      });
-      attempts.push({
-        name: '二维码区域（原始像素）',
-        width: regionImage.width,
-        height: regionImage.height,
-        decoded: second !== null,
-      });
-      if (second?.data) {
-        return { text: second.data, size, attempts, preview: previewOf(region.canvas) };
+      const pixels = region.context.getImageData(0, 0, region.canvas.width, region.canvas.height);
+      const decoded = jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: 'attemptBoth' });
+      attempts.push({ name: crop.name, width: pixels.width, height: pixels.height, decoded: !!decoded?.data });
+      if (decoded?.data) {
+        return { text: decoded.data, size, attempts, preview: previewOf(region.canvas) };
       }
-      return { text: null, size, attempts, preview: previewOf(overview.canvas) };
+      // Explicitly release the backing store on low-memory Android WebViews.
+      region.canvas.width = 0;
+      region.canvas.height = 0;
     }
-
-    attempts.push({ name: '定位二维码', width: 0, height: 0, decoded: false });
     return { text: null, size, attempts, preview: previewOf(overview.canvas) };
   } finally {
     // A 12-megapixel bitmap is tens of megabytes; a phone that keeps several is a phone that
