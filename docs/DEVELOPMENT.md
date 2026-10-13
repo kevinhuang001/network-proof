@@ -27,7 +27,7 @@ pnpm --filter @netproof/hardware exec cap sync android
 cd apps/hardware/android && ./gradlew testDebugUnitTest assembleDebug
 ```
 
-修改 TypeScript 逻辑必须附带单元或协议测试。修复扫码时优先添加离线图片和多帧扫码回归；修改 Android 权限须检查 APK manifest。不要将生成产物、助记词、私钥、JKS 或密钥口令提交到仓库。
+修改 TypeScript 逻辑必须附带单元或协议测试。修复扫码时优先添加静态与动态二维码回归；修改 Android 权限须检查 APK manifest。不要将生成产物、助记词、私钥、JKS 或密钥口令提交到仓库。
 
 ## 变更与发布
 
