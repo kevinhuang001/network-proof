@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   HDKey,
   PROTOCOL_VERSION,
@@ -35,6 +35,7 @@ import { QrDisplay } from '../components/QrDisplay';
 import { ROBUST_FALLBACK_MS } from '../lib/qrPresets';
 import { useRobustQrFallback } from '../lib/useRobustQrFallback';
 import { scanPhoto } from '../lib/photoScan';
+import { startLiveQrScan } from '../lib/liveQrScan';
 import { useSession } from '../state/session';
 
 /**
@@ -67,6 +68,8 @@ export function ScanRequestScreen({
    * preview geometry, no stream to keep alive.
    */
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [live, setLive] = useState(false);
   const galleryRef = useRef<HTMLInputElement | null>(null);
   const collectorRef = useRef(new FrameCollector('NP-REQ'));
   const [photo, setPhoto] = useState<string | null>(null);
@@ -119,17 +122,55 @@ export function ScanRequestScreen({
     }
   };
 
+  // Keep one fountain collector for both live frames and imported photographs.
+  // React StrictMode cleanup aborts an in-flight camera start and releases tracks.
+  useEffect(() => {
+    if (!live || !videoRef.current) return;
+    const controller = new AbortController();
+    let stop: (() => void) | undefined;
+    const video = videoRef.current;
+    void startLiveQrScan(video, (text) => {
+      try {
+        const next = collectorRef.current.addText(text);
+        setProgress(next);
+        if (!collectorRef.current.complete) return;
+        const message = decodeMessage(collectorRef.current.result());
+        if (message.t !== 'req') throw new Error('扫描到的不是签名请求');
+        haptic([10, 40, 10]);
+        stop?.();
+        onDecoded(message);
+      } catch (error) {
+        setProblem('二维码数据不正确：' + (error as Error).message);
+      }
+    }, (message) => setProblem('扫码出错：' + message), controller.signal)
+      .then((handle) => { stop = handle.stop; if (controller.signal.aborted) handle.stop(); })
+      .catch((error: Error) => {
+        if (error.name !== 'AbortError' && !controller.signal.aborted) {
+          setProblem('无法启动连续扫码：' + error.message + '。可使用拍照或相册导入。');
+          setLive(false);
+        }
+      });
+    return () => { controller.abort(); stop?.(); };
+  }, [live, onDecoded]);
+
   const fraction = progress && progress.total > 0 ? progress.solved / progress.total : 0;
 
   return (
     <>
       <Header title="扫描签名请求" onBack={onBack} />
       <div className="np-main">
-        <h2 className="np-headline">拍一张二维码的照片</h2>
+        <h2 className="np-headline">扫描签名请求二维码</h2>
         <p className="np-body">
-          在插件钱包里发起请求，然后点下面的按钮用系统相机拍它显示的二维码。
-          照片会留在本机，只有解析出的请求会进入下一步。
+          在插件钱包里发起请求，使用连续扫码读取静态码或动态分片。摄像头画面只在本机解析；如无法对焦，也可拍照或从相册导入。
         </p>
+
+        {live ? (
+          <div className="np-camera">
+            <video ref={videoRef} autoPlay muted playsInline
+              style={{ width: '100%', maxHeight: '55vh', objectFit: 'contain' }} />
+            <div className="np-camera__overlay"><div className="np-scan-frame" /></div>
+          </div>
+        ) : null}
 
         {photo ? (
           <div className="np-card">
@@ -180,10 +221,13 @@ export function ScanRequestScreen({
             if (file) void takePhoto(file);
           }}
         />
-        <Button block disabled={busy} onClick={() => fileRef.current?.click()}>
+        <Button block disabled={busy} onClick={() => setLive((value) => !value)}>
+          {live ? '停止连续扫码' : '开始连续扫码（推荐）'}
+        </Button>
+        <Button block variant="secondary" disabled={busy} onClick={() => { setLive(false); fileRef.current?.click(); }}>
           {busy ? '正在读取…' : photo ? '再拍一张' : '拍照扫码'}
         </Button>
-        <Button block variant="secondary" disabled={busy} onClick={() => galleryRef.current?.click()}>
+        <Button block variant="secondary" disabled={busy} onClick={() => { setLive(false); galleryRef.current?.click(); }}>
           从相册选择二维码照片
         </Button>
       </div>
