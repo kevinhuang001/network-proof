@@ -1,8 +1,10 @@
-# NetProof v0.2.1
+# NetProof v0.2.2
 
-- Android 实时连续二维码扫描（静态与动态分片）。
-- 移除拍照与相册扫码分支，清理旧扫码组件和对应测试。
-- 补充扫码回归测试及开发、测试、签名发行文档。
-- 签名发布统一使用 NP_KEYSTORE_BASE64、NP_KEYSTORE_PASSWORD、NP_KEY_ALIAS、NP_KEY_PASSWORD（可选）。
+- Modular companion routing and per-wallet settings scope.
+- Modular Android preferences and navigation route definitions.
+- Extracted extension service-worker diagnostic decision log.
+- Added scanner recovery control to clear stale QR fragments without relaunching.
+- Accessibility and visual polish: focus rings, pressed-state semantics, responsive surfaces and reduced-motion support.
+- Expanded unit test coverage for routes, settings ownership and diagnostics.
 
-发布前须完成真实 Android 手机和 Chrome 扩展的二维码端到端验收。签名密钥由 GitHub Secrets 提供，APK 不请求 INTERNET 权限。
+All signing operations remain offline on the Android phone. Physical Android/Chrome QR interoperability remains a required release acceptance test.

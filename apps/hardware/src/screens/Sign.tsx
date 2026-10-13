@@ -90,6 +90,12 @@ export function ScanRequestScreen({
     return () => { controller.abort(); stop?.(); };
   }, [live, onDecoded]);
 
+  const resetScan = (): void => {
+    collectorRef.current = new FrameCollector('NP-REQ');
+    setProgress(null);
+    setProblem(null);
+  };
+
   const fraction = progress && progress.total > 0 ? progress.solved / progress.total : 0;
 
   return (
@@ -125,8 +131,11 @@ export function ScanRequestScreen({
       </div>
 
       <div className="np-footer">
-        <Button block onClick={() => setLive((value) => !value)}>
-          {live ? '停止连续扫码' : '开始连续扫码（推荐）'}
+        {(progress || problem) ? (
+          <Button block variant="outline" onClick={resetScan}>清除扫描进度并重新识别</Button>
+        ) : null}
+        <Button block onClick={() => { setProblem(null); setLive((value) => !value); }}>
+          {live ? '停止连续扫码' : '开始连续扫码'}
         </Button>
       </div>
     </>

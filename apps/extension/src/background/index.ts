@@ -1,4 +1,5 @@
 import { toHex } from '@netproof/core';
+import { DecisionLog } from './decisionLog';
 import { forwardToNode } from '@netproof/companion';
 import { handleRpc } from '@netproof/companion';
 import {
@@ -65,18 +66,10 @@ const portOrigins = new WeakMap<chrome.runtime.Port, string>();
  * console nobody opens. A short ring buffer, readable from the wallet's own settings screen,
  * turns that into a question with an answer: did the call arrive, and what did we do with it?
  */
-interface Decision {
-  at: number;
-  method: string;
-  origin: string;
-  outcome: string;
-}
-const decisions: Decision[] = [];
-const DECISION_LIMIT = 40;
+const decisionLog = new DecisionLog();
 
 function note(method: string, origin: string, outcome: string): void {
-  decisions.unshift({ at: Date.now(), method, origin, outcome });
-  decisions.length = Math.min(decisions.length, DECISION_LIMIT);
+  decisionLog.record(method, origin, outcome);
 }
 
 void chrome.runtime.onInstalled.addListener(() => {
@@ -143,7 +136,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
         rpcUrl: settings.rpcUrls[settings.chainId] ?? null,
         approvedOrigins: origins,
         pending: pending.map((entry) => ({ id: entry.id, method: entry.method, origin: entry.origin })),
-        decisions,
+        decisions: decisionLog.list(),
       });
     })();
     return true;
