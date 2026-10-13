@@ -1,12 +1,10 @@
 {
   "manifest_version": 3,
   "name": "NetProof Companion",
-  "version": "0.1.0",
-
+  "version": "0.2.0",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsO5QHCaxuTPJMXYeRDPGZyqQY52USWPVzT325FyOvaTOO0GLXq8p5V17vLGK7Wuzub6iXXHYaXIuIeX4Kvue8qhtqO6I3/PinzvlFzNWvNcvgLPvsdeylQ8FesSGD84/YJsJnXkzxYxiMPwqdzv8RfACgMidu9zYm7wKbVdFT4W0QRnSVweqq50UaENFfH1nTarjOzg493oxjq0NDidgQI4dMVaEGqH2s7XAZZhs6jQEopOQI90K/RMm4jK6xWKWphrVK1K5ljoZW8vVlVhUFNiO2dWbnZ1fXNsbLqaWR/wdWwvbjlbU4yKSqCx44c64h4rOXDKEaq6Ap6ZEsiEOjwIDAQAB",
   "description": "只读插件钱包：私钥永远留在离线手机上，签名通过二维码气隙往返。支持 dApp 连接。",
   "minimum_chrome_version": "111",
-
   "action": {
     "default_title": "NetProof Companion",
     "default_popup": "popup.html",
@@ -15,37 +13,47 @@
       "32": "icon-32.png"
     }
   },
-
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
-
-  "permissions": ["storage", "tabs", "unlimitedStorage"],
-
-  "host_permissions": ["<all_urls>"],
-
+  "permissions": [
+    "storage",
+    "tabs",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["inject.js"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "inject.js"
+      ],
       "world": "MAIN",
       "run_at": "document_start",
       "all_frames": false
     },
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["bridge.js"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
       "world": "ISOLATED",
       "run_at": "document_start",
       "all_frames": false
     }
   ],
-
   "content_security_policy": {
     "extension_pages": "default-src 'self'; img-src 'self' data:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src https: http://localhost:* http://127.0.0.1:*"
   },
-
   "icons": {
     "16": "icon-16.png",
     "32": "icon-32.png",

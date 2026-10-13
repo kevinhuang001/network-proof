@@ -1,6 +1,6 @@
 {
   "name": "@netproof/extension",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "NetProof Companion — watch-only Chrome wallet that signs through the air-gapped device over QR.",
