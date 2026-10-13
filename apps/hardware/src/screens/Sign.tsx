@@ -34,7 +34,6 @@ import { Alert, Badge, Button, Header, KeyValue, PasswordField, haptic } from '.
 import { QrDisplay } from '../components/QrDisplay';
 import { ROBUST_FALLBACK_MS } from '../lib/qrPresets';
 import { useRobustQrFallback } from '../lib/useRobustQrFallback';
-import { scanPhoto } from '../lib/photoScan';
 import { startLiveQrScan } from '../lib/liveQrScan';
 import { useSession } from '../state/session';
 
@@ -54,75 +53,13 @@ export function ScanRequestScreen({
   onDecoded: (request: SignRequestMessage) => void;
   onBack: () => void;
 }): ReactNode {
-  /**
-   * Photograph the code with the phone's own camera, rather than reading a live preview.
-   *
-   * Everything that went wrong before came from the live stream: a WebView's video frames are
-   * whatever resolution, orientation and focus the platform decides, the preview the user judges
-   * them by is not necessarily the same picture, and a code that changes while the decoder is
-   * looking at it is a race the slower side loses. A photograph has none of those properties —
-   * and a still photograph of a still code is the one case where there is nothing to race at all.
-   *
-   * The camera app is invoked through a file input with `capture`, which on Android opens the
-   * system camera and returns a full-resolution, autofocused frame. No permission dance, no
-   * preview geometry, no stream to keep alive.
-   */
-  const fileRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [live, setLive] = useState(false);
-  const galleryRef = useRef<HTMLInputElement | null>(null);
   const collectorRef = useRef(new FrameCollector('NP-REQ'));
-  const [photo, setPhoto] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<FrameCollectorProgress | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
-  const takePhoto = async (file: File): Promise<void> => {
-    setBusy(true);
-    setProblem(null);
-    try {
-      const result = await scanPhoto(file);
-      setPhoto(result.preview);
-      if (result.text === null) {
-        const located = result.attempts.some((attempt) => attempt.name === '定位二维码' && !attempt.decoded);
-        setProblem(
-          located
-            ? '照片里没有找到二维码的方块。把二维码放在画面中间、占大一些，再拍一张。'
-            : `照片里找到了二维码，但读不出来（原图 ${result.size.width}×${result.size.height}）。` +
-              '让二维码在画面里更大一些、别反光，再拍一张。',
-        );
-        return;
-      }
-
-      /*
-       * Frames accumulate across photographs.
-       *
-       * A code too large to be one still image is sent as an animation, and a photograph can only
-       * ever catch one frame of one — so the collector keeps what each photograph contributed and
-       * asks for another, which is exactly what the fountain code is for.
-       */
-      const next = collectorRef.current.addText(result.text);
-      setProgress(next);
-      if (!collectorRef.current.complete) {
-        setProblem(`已收到 ${next.solved}/${next.total} 个分片，请对着同一张码再拍一张。`);
-        return;
-      }
-      const message = decodeMessage(collectorRef.current.result());
-      if (message.t !== 'req') throw new Error('拍到的不是签名请求二维码');
-      haptic([10, 40, 10]);
-      onDecoded(message);
-    } catch (caught) {
-      setProblem(`无法读取这张照片：${(caught as Error).message}`);
-    } finally {
-      setBusy(false);
-      // Let the same file be chosen again — a second photo of the same code is a normal thing to
-      // do, and a file input that refuses an identical path would silently do nothing.
-      if (fileRef.current) fileRef.current.value = '';
-      if (galleryRef.current) galleryRef.current.value = '';
-    }
-  };
-
-  // Keep one fountain collector for both live frames and imported photographs.
+  // Keep one fountain collector for live animated QR frames.
   // React StrictMode cleanup aborts an in-flight camera start and releases tracks.
   useEffect(() => {
     if (!live || !videoRef.current) return;
@@ -146,7 +83,7 @@ export function ScanRequestScreen({
       .then((handle) => { stop = handle.stop; if (controller.signal.aborted) handle.stop(); })
       .catch((error: Error) => {
         if (error.name !== 'AbortError' && !controller.signal.aborted) {
-          setProblem('无法启动连续扫码：' + error.message + '。可使用拍照或相册导入。');
+          setProblem('无法启动连续扫码：' + error.message + '。请检查相机权限和取景画面。');
           setLive(false);
         }
       });
@@ -161,7 +98,7 @@ export function ScanRequestScreen({
       <div className="np-main">
         <h2 className="np-headline">扫描签名请求二维码</h2>
         <p className="np-body">
-          在插件钱包里发起请求，使用连续扫码读取静态码或动态分片。摄像头画面只在本机解析；如无法对焦，也可拍照或从相册导入。
+          在插件钱包中显示请求二维码。启动连续扫码后对准屏幕，静态码或动态分片均会自动识别，图像只在本机处理。
         </p>
 
         {live ? (
@@ -169,13 +106,6 @@ export function ScanRequestScreen({
             <video ref={videoRef} autoPlay muted playsInline
               style={{ width: '100%', maxHeight: '55vh', objectFit: 'contain' }} />
             <div className="np-camera__overlay"><div className="np-scan-frame" /></div>
-          </div>
-        ) : null}
-
-        {photo ? (
-          <div className="np-card">
-            <div className="np-label">这张照片</div>
-            <img src={photo} alt="二维码照片" className="np-sample" />
           </div>
         ) : null}
 
@@ -195,40 +125,8 @@ export function ScanRequestScreen({
       </div>
 
       <div className="np-footer">
-        {/*
-          `capture` asks Android for its own camera app; without it the same input still lets the
-          user pick a photo they already took. Both are fine, and the second is a real fallback on
-          a phone whose camera app misbehaves.
-        */}
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          style={{ display: 'none' }}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void takePhoto(file);
-          }}
-        />
-        <input
-          ref={galleryRef}
-          type="file"
-          accept="image/*"
-          style={{ display: 'none' }}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void takePhoto(file);
-          }}
-        />
-        <Button block disabled={busy} onClick={() => setLive((value) => !value)}>
+        <Button block onClick={() => setLive((value) => !value)}>
           {live ? '停止连续扫码' : '开始连续扫码（推荐）'}
-        </Button>
-        <Button block variant="secondary" disabled={busy} onClick={() => { setLive(false); fileRef.current?.click(); }}>
-          {busy ? '正在读取…' : photo ? '再拍一张' : '拍照扫码'}
-        </Button>
-        <Button block variant="secondary" disabled={busy} onClick={() => { setLive(false); galleryRef.current?.click(); }}>
-          从相册选择二维码照片
         </Button>
       </div>
     </>
