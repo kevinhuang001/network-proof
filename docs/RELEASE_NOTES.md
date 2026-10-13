@@ -1,9 +1,8 @@
-# NetProof v0.2.0
+# NetProof v0.2.1
 
-- Android 照片扫码补充定位失败时的重叠高清分区解码，改善二维码占画面较小时的容错。
-- 在签名请求页添加「从相册选择二维码照片」，不依赖相机 capture 行为。
-- Android Release 只能使用预先存在的 keystore 正式签名；移除自动生成原型密钥的发布方式。
-- Chrome 扩展与 Android APK 使用 GitHub Actions 自动构建、检查，发布时提供 SHA-256 校验。
-- 重写项目入口、使用手册、架构、安全发布与重构说明。
+- Android 实时连续二维码扫描（静态与动态分片）。
+- 移除拍照与相册扫码分支，清理旧扫码组件和对应测试。
+- 补充扫码回归测试及开发、测试、签名发行文档。
+- 签名发布统一使用 NP_KEYSTORE_BASE64、NP_KEYSTORE_PASSWORD、NP_KEY_ALIAS、NP_KEY_PASSWORD（可选）。
 
-**升级安全提醒：** 需要与已安装旧版相同的签名证书，且建议先离线备份助记词。扫码链路涉及机型、镜头和 WebView；源码级测试不能替代真实手机验证。该项目没有完成独立安全审计，不应直接承担不可承受的财产风险。
+发布前须完成真实 Android 手机和 Chrome 扩展的二维码端到端验收。签名密钥由 GitHub Secrets 提供，APK 不请求 INTERNET 权限。
