@@ -54,6 +54,26 @@ jobs:
         working-directory: apps/hardware/android
         run: ./gradlew --no-daemon testDebugUnitTest assembleRelease
 
+      - name: Package verified Chrome extension
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          (cd apps/extension/dist && zip -qr "$GITHUB_WORKSPACE/release/netproof-companion-extension-0.2.0.zip" .)
+          (cd release && sha256sum netproof-companion-extension-0.2.0.zip > SHA256SUMS.txt)
+      - name: Publish extension pre-release before Android signing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" release/netproof-companion-extension-0.2.0.zip release/SHA256SUMS.txt \
+              --target "${{ github.event.workflow_run.head_sha || github.sha }}" \
+              --title "NetProof $TAG (Android signing pending)" \
+              --notes-file docs/RELEASE_NOTES.md \
+              --prerelease
+          else
+            echo "Release $TAG already exists; preserving existing assets."
+          fi
       - name: Sign with existing GitHub Actions keystore secret
         env:
           KEYSTORE_BASE64: ${{ secrets.NP_KEYSTORE_BASE64 || secrets.ANDROID_KEYSTORE_BASE64 || secrets.KEYSTORE_BASE64 }}
@@ -87,28 +107,27 @@ jobs:
           fi
           rm -f "$RUNNER_TEMP/netproof-release.jks" "$RUNNER_TEMP/aligned.apk"
 
-      - name: Package verified Chrome extension
+      - name: Complete release checksums
         run: |
           set -euo pipefail
-          mkdir -p release
-          (cd apps/extension/dist && zip -qr "$GITHUB_WORKSPACE/release/netproof-companion-extension-0.2.0.zip" .)
           (cd release && sha256sum netproof-air-0.2.0.apk netproof-companion-extension-0.2.0.zip > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:
           name: netproof-signed-release
           path: release/
           if-no-files-found: error
-      - name: Publish GitHub Release
+      - name: Attach signed APK and publish final release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists; refusing to overwrite published binaries."
-            exit 0
+            gh release upload "$TAG" release/netproof-air-0.2.0.apk release/SHA256SUMS.txt --clobber
+            gh release edit "$TAG" --title "NetProof $TAG" --prerelease=false --latest
+          else
+            gh release create "$TAG" release/* \
+              --target "${{ github.event.workflow_run.head_sha || github.sha }}" \
+              --title "NetProof $TAG" \
+              --notes-file docs/RELEASE_NOTES.md \
+              --latest
           fi
-          gh release create "$TAG" release/* \
-            --target "${{ github.event.workflow_run.head_sha || github.sha }}" \
-            --title "NetProof $TAG" \
-            --notes-file docs/RELEASE_NOTES.md \
-            --latest
